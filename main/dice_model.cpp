@@ -142,6 +142,16 @@ void DiceModel::Ingest(const pixels::Advertisement &advertisement,
         previous_state == pixels::RollState::kHandling ||
         previous_state == pixels::RollState::kRolling ||
         previous_state == pixels::RollState::kCrooked;
+    const bool currently_moving =
+        advertisement.roll_state == pixels::RollState::kHandling ||
+        advertisement.roll_state == pixels::RollState::kRolling ||
+        advertisement.roll_state == pixels::RollState::kCrooked;
+    const bool currently_completed =
+        advertisement.roll_state == pixels::RollState::kRolled ||
+        advertisement.roll_state == pixels::RollState::kOnFace;
+    const bool first_observation_active =
+        !has_advertised_roll_state_[index] &&
+        (currently_moving || currently_completed);
     const bool completed_roll =
         (advertisement.roll_state == pixels::RollState::kRolled &&
          ((has_advertised_roll_state_[index] &&
@@ -151,11 +161,12 @@ void DiceModel::Ingest(const pixels::Advertisement &advertisement,
          (previous_state_was_moving || settled_face_changed));
     const bool physically_active =
         advertisement.roll_state != pixels::RollState::kUnknown &&
-        ((has_advertised_roll_state_[index] &&
+        (first_observation_active || currently_moving ||
+         (has_advertised_roll_state_[index] &&
           advertised_roll_state_[index] != advertisement.roll_state) ||
          settled_face_changed);
     bool changed = ApplyAdvertisement(&die, advertisement, now_ms);
-    if (physically_active) {
+    if (physically_active || completed_roll) {
       die.last_activity_ms = now_ms;
       changed = true;
     }
