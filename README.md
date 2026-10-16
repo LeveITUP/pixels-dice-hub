@@ -20,17 +20,25 @@ and per die.
 | Target | Interface | Status |
 | --- | --- | --- |
 | Waveshare ESP32-C6-Touch-LCD-1.47 | 172 x 320 touch display and web UI | Builds; physical touchscreen validation still required |
-| Waveshare ESP32-C6-Touch-AMOLED-1.64 | 280 x 456 touch display and web UI | Planned |
+| Waveshare ESP32-S3-Touch-AMOLED-1.64-v2 | 280 x 456 touch display and web UI | Hardware validated |
 | Classic ESP32/ESP32-WROOM | Web UI only | Hardware tested |
 | Generic ESP32-C3/C6/S3 boards | Web UI only | Planned |
-| Selected ESP32-S3 LCD/AMOLED boards | Touch display and web UI | Provisional pending exact models |
 
 The C6 board combines a JD9853 LCD, AXS5106L capacitive touch controller, and
-QMI8658 IMU. The dashboard automatically switches between portrait and
-landscape layouts. Planned boards will share the application through
-board-specific hardware profiles; see the
+QMI8658 IMU. The S3 profile supports the SH8601 QSPI AMOLED, FT3168 touch
+controller, command-based brightness, 16 MB flash, and 8 MB octal PSRAM on the
+Waveshare 1.64-inch v2 board. The dashboard automatically switches between
+portrait and landscape layouts. Display hardware is isolated behind a
+build-selectable board profile that exposes resolution and peripheral
+capabilities to the responsive LVGL UI. Additional boards can provide their own
+display, touch, IMU, brightness, and orientation implementations without
+changing the dice or web application; see the
 [project plan](docs/project-plan.md#hardware-targets) for selection criteria
 and porting phases.
+
+The default display profile is `c6_lcd_147`. Select a profile at CMake
+configuration time with `-DPIXELS_BOARD_PROFILE=<profile>`. Unsupported profile
+names fail configuration rather than silently building for the wrong pinout.
 
 ## Features
 
@@ -50,6 +58,8 @@ and porting phases.
 - Provides a responsive, dependency-free web dashboard embedded in firmware.
 - Runs the touchscreen with Wi-Fi off by default for higher BLE scan duty.
 - Supports four-way touchscreen orientation using the onboard IMU.
+- Supports optional board-profile status lighting for dice state feedback, with
+  off, solid, and pulsing modes selectable from the touchscreen or web UI.
 - Shows only dice handled or rolled within the last 30 minutes while retaining
   all pairings; the empty dashboard reports paired/discovered counts.
 
@@ -100,8 +110,14 @@ point available.
 The touchscreen firmware defaults Wi-Fi off. Its pairing/settings page can
 enable or disable Wi-Fi, and the saved choice persists across reboots. The
 header shows `OFF`, `AP`, `...`, or `NET` for the current network state. BLE
-scan duty is 95% while Wi-Fi is off and 50% while the radios are shared. The
+scan duty is 100% while Wi-Fi is off and 50% while the radios are shared. The
 headless firmware keeps Wi-Fi enabled because its web page is the only UI.
+
+On board profiles with a programmable status light, the pairing/settings page
+can cycle the light between off, solid, and pulse modes. The light is amber
+while dice are handled, blue while rolling, red for crooked dice, and green
+after every die participating in the current throw has reported a completed
+roll.
 
 Roll history intentionally resets on reboot to avoid frequent flash writes.
 Paired Pixel IDs, aggregate mode, the touchscreen Wi-Fi choice, and optional
@@ -158,9 +174,21 @@ round is active.
 ESP-IDF 5.3 or newer is required:
 
 ```sh
+# Waveshare ESP32-C6-Touch-LCD-1.47
 idf.py set-target esp32c6
 idf.py build
 idf.py flash monitor
+
+# Waveshare ESP32-S3-Touch-AMOLED-1.64-v2
+idf.py -B build-s3-amoled \
+  -D SDKCONFIG_DEFAULTS=sdkconfig.s3_amoled_164.defaults \
+  -D PIXELS_BOARD_PROFILE=s3_amoled_164 \
+  set-target esp32s3
+idf.py -B build-s3-amoled \
+  -D SDKCONFIG_DEFAULTS=sdkconfig.s3_amoled_164.defaults \
+  -D PIXELS_BOARD_PROFILE=s3_amoled_164 \
+  build
+idf.py -B build-s3-amoled -p /dev/ttyACM1 flash monitor
 ```
 
 Host-side protocol tests do not require ESP-IDF:

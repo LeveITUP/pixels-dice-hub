@@ -280,15 +280,18 @@ Planned entities:
 
 ### Phase 7 - Multi-board foundation
 
-- Replace hard-coded display dimensions with board capabilities.
-- Split current JD9853/AXS5106 initialization into the LCD board profile.
-- Move brightness, touch transform, and IMU orientation behind the board API.
-- Add scalable UI metrics for dimensions, pixel density, fonts, spacing, and
-  minimum physical touch-target size.
+- [x] Replace hard-coded display dimensions with board capabilities.
+- [x] Split current JD9853/AXS5106 initialization into the LCD board profile.
+- [x] Move brightness, touch transform, and IMU orientation behind the board
+  API.
+- [x] Add scalable UI metrics for dimensions, pixel density, fonts, and
+  spacing.
+- Verify minimum physical touch-target sizes on each additional display.
 - Stop rebuilding the complete dashboard on periodic status refreshes; update
   existing LVGL objects so higher-resolution displays do not add avoidable
   single-core CPU load.
-- Add repeatable build commands and artifact names for every concrete target.
+- [x] Add a build-time board profile selector that rejects unknown targets.
+- Add artifact names for every concrete target as additional profiles land.
 
 ### Phase 8 - Additional headless targets
 

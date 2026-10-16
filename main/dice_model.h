@@ -35,6 +35,7 @@ struct Die {
   uint16_t firmware_version = 0;
   uint8_t battery = 0;
   uint8_t battery_state = 0;
+  uint8_t face_index = 0;
   uint8_t colorway = 0;
   bool charging = false;
   bool has_roll = false;

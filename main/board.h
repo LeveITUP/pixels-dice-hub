@@ -11,14 +11,32 @@
 
 namespace board {
 
-constexpr int kPortraitWidth = 172;
-constexpr int kPortraitHeight = 320;
-
 enum class Orientation : uint8_t {
   kPortrait = 0,
   kLandscapeRight = 1,
   kPortraitInverted = 2,
   kLandscapeLeft = 3,
+};
+
+struct Capabilities {
+  const char *name;
+  int portrait_width;
+  int portrait_height;
+  int draw_buffer_rows;
+  int16_t orientation_threshold;
+  int16_t orientation_hysteresis;
+  bool has_display;
+  bool has_touch;
+  bool has_imu;
+  bool has_brightness;
+  bool has_status_led;
+  bool is_amoled;
+};
+
+struct RgbColor {
+  uint8_t red;
+  uint8_t green;
+  uint8_t blue;
 };
 
 struct Hardware {
@@ -27,9 +45,16 @@ struct Hardware {
   esp_lcd_panel_handle_t panel = nullptr;
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
+  void *status_led = nullptr;
 };
 
+const Capabilities &GetCapabilities();
+bool IsLandscape(Orientation orientation);
+int DisplayWidth(Orientation orientation);
+int DisplayHeight(Orientation orientation);
 esp_err_t Init(Hardware *hardware);
+esp_err_t SetBrightness(Hardware *hardware, uint8_t percent);
+esp_err_t SetStatusLed(Hardware *hardware, RgbColor color);
 bool ReadAcceleration(Hardware *hardware, int16_t *x, int16_t *y, int16_t *z);
 void SetOrientation(Hardware *hardware, Orientation orientation);
 Orientation DetectOrientation(int16_t x, int16_t y,

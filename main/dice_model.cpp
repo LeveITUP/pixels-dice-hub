@@ -55,17 +55,19 @@ bool DiceModel::ApplyAdvertisement(Die *die,
   const int new_roll =
       pixels::FaceValue(advertisement.die_type, advertisement.face_index,
                         advertisement.firmware_timestamp);
-  const bool completed_roll =
-      advertisement.roll_state == pixels::RollState::kRolled;
+  const bool settled =
+      advertisement.roll_state == pixels::RollState::kRolled ||
+      advertisement.roll_state == pixels::RollState::kOnFace;
   const bool changed =
       die->pixel_id != advertisement.pixel_id ||
       die->type != advertisement.die_type ||
       die->roll_state != advertisement.roll_state ||
       die->battery != advertisement.battery_percent ||
+      die->face_index != advertisement.face_index ||
       die->colorway != advertisement.colorway ||
       die->charging != advertisement.charging ||
       std::strncmp(die->name, advertisement.name, sizeof(die->name)) != 0 ||
-      (completed_roll && (!die->has_roll || die->last_roll != new_roll)) ||
+      (settled && (!die->has_roll || die->last_roll != new_roll)) ||
       die->last_seen_ms == 0 || now_ms - die->last_seen_ms > 15000;
 
   die->pixel_id = advertisement.pixel_id;
@@ -74,12 +76,13 @@ bool DiceModel::ApplyAdvertisement(Die *die,
   die->rssi = advertisement.rssi;
   die->last_seen_ms = now_ms;
   die->battery = advertisement.battery_percent;
+  die->face_index = advertisement.face_index;
   die->colorway = advertisement.colorway;
   die->charging = advertisement.charging;
   std::strncpy(die->name, advertisement.name, sizeof(die->name) - 1);
   die->name[sizeof(die->name) - 1] = '\0';
 
-  if (completed_roll) {
+  if (settled) {
     die->last_roll = new_roll;
     die->has_roll = true;
   }
@@ -132,15 +135,25 @@ void DiceModel::Ingest(const pixels::Advertisement &advertisement,
     const bool first_observation_after_restore =
         !has_advertised_roll_state_[index] &&
         restore_grace_until_ms_ != 0 && now_ms >= restore_grace_until_ms_;
+    const bool settled_face_changed =
+        die.has_roll && die.face_index != advertisement.face_index;
+    const pixels::RollState previous_state = advertised_roll_state_[index];
+    const bool previous_state_was_moving =
+        previous_state == pixels::RollState::kHandling ||
+        previous_state == pixels::RollState::kRolling ||
+        previous_state == pixels::RollState::kCrooked;
     const bool completed_roll =
-        advertisement.roll_state == pixels::RollState::kRolled &&
-        ((has_advertised_roll_state_[index] &&
-          advertised_roll_state_[index] != pixels::RollState::kRolled) ||
-         first_observation_after_restore);
+        (advertisement.roll_state == pixels::RollState::kRolled &&
+         ((has_advertised_roll_state_[index] &&
+           previous_state != pixels::RollState::kRolled) ||
+          first_observation_after_restore || settled_face_changed)) ||
+        (advertisement.roll_state == pixels::RollState::kOnFace &&
+         (previous_state_was_moving || settled_face_changed));
     const bool physically_active =
-        has_advertised_roll_state_[index] &&
-        advertised_roll_state_[index] != advertisement.roll_state &&
-        advertisement.roll_state != pixels::RollState::kUnknown;
+        advertisement.roll_state != pixels::RollState::kUnknown &&
+        ((has_advertised_roll_state_[index] &&
+          advertised_roll_state_[index] != advertisement.roll_state) ||
+         settled_face_changed);
     bool changed = ApplyAdvertisement(&die, advertisement, now_ms);
     if (physically_active) {
       die.last_activity_ms = now_ms;
@@ -199,6 +212,7 @@ bool DiceModel::Pair(uint32_t pixel_id) {
     return false;
   }
   dice_[dice_count_] = candidates_[candidate_index];
+  dice_[dice_count_].last_activity_ms = dice_[dice_count_].last_seen_ms;
   die_history_[dice_count_] = {};
   die_history_count_[dice_count_] = 0;
   die_history_next_[dice_count_] = 0;
@@ -246,6 +260,7 @@ void DiceModel::RestorePaired(const uint32_t *pixel_ids, std::size_t count,
   for (std::size_t i = 0; i < dice_count_; ++i) {
     dice_[i] = {};
     dice_[i].pixel_id = pixel_ids[i];
+    dice_[i].last_activity_ms = now_ms;
   }
   die_history_ = {};
   die_history_count_ = {};
@@ -342,6 +357,7 @@ void DiceModel::UpdateConnectedInfo(const ConnectedDieInfo &info,
   die.roll_state = info.roll_state;
   die.battery = info.battery;
   die.battery_state = info.battery_state;
+  die.face_index = info.face_index;
   die.charging = info.battery_state >= 2 && info.battery_state <= 4;
   die.last_seen_ms = now_ms;
   die.has_connected_info = true;

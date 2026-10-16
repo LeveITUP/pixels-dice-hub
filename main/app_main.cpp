@@ -5,6 +5,7 @@
 #include "nvs_flash.h"
 #include "pixels_ble.h"
 #include "preferences.h"
+#include "status_led.h"
 #include "ui.h"
 #include "web_server.h"
 
@@ -28,6 +29,7 @@ extern "C" void app_main() {
   app::RestorePreferences(&model);
 
   ESP_ERROR_CHECK(board::Init(&hardware));
+  ESP_ERROR_CHECK(app::StartStatusLed(&hardware, &model));
   ESP_ERROR_CHECK(app::StartUi(&hardware, &model));
   const bool wifi_enabled = app::RestoreWebNetworkEnabled(false);
   app::SetPixelsScannerWifiActive(wifi_enabled);

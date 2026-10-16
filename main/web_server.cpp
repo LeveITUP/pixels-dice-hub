@@ -19,6 +19,7 @@
 #include "nvs.h"
 #include "pixels_ble.h"
 #include "preferences.h"
+#include "status_led.h"
 
 namespace app {
 namespace {
@@ -101,6 +102,10 @@ width:min(460px,100%);max-height:85vh;overflow:auto}.modal-head{display:flex;ali
 <button onclick="action('calcCancel')">Cancel</button></div></section>
 <section class="section"><h2>Pair dice</h2><div id="pairing"></div></section>
 <section class="section"><h2>Last 20 rolls</h2><div id="history"></div></section>
+<section id="lighting" class="section card" hidden><h2>Hub lighting</h2>
+<p class="muted">Blue while rolling, amber while handled, red if crooked, green when the current dice finish.</p>
+<div class="calc-controls"><button id="led-mode" onclick="action('ledMode')">Status light</button>
+<span id="led-state" class="muted"></span></div></section>
 <section class="section"><h2>Wi-Fi</h2><p class="muted">The Pixels-Dice access point remains available. Save credentials to also join your home network.</p>
 <form id="wifi"><input name="ssid" maxlength="32" placeholder="Network name">
 <input name="password" maxlength="63" type="password" placeholder="Password">
@@ -159,6 +164,9 @@ document.querySelector('#dice').innerHTML=active.length?active.map(dieCard).join
 document.querySelector('#mode').textContent=s.aggregate.mode+' ›';document.querySelector('#total').textContent=s.aggregate.hasValue?s.aggregate.value:'-';
 document.querySelector('#roll-count').textContent=s.aggregate.rollCount+' roll'+(s.aggregate.rollCount===1?'':'s');
 renderCalculator(s.calculator);
+const lighting=document.querySelector('#lighting');lighting.hidden=!s.statusLed.supported;
+if(s.statusLed.supported){document.querySelector('#led-mode').textContent='Status light: '+s.statusLed.mode;
+document.querySelector('#led-state').textContent=s.statusLed.state}
 const paired=s.dice.map(d=>`<div class="row"><div class="grow"><b>${esc(d.type)} ${esc(d.name)}</b><div class="muted">${d.id}</div></div><button onclick="action('unpair','${d.id}')">Remove</button></div>`);
 const found=s.candidates.map(d=>`<div class="row"><div class="grow"><b>${esc(d.type)} ${esc(d.name)}</b><div class="muted">${d.id} · ${d.rssi} dBm</div></div><button onclick="action('pair','${d.id}')">Add</button></div>`);
 document.querySelector('#pairing').innerHTML=[...paired,...found].join('')||'<div class="empty">No Pixels discovered yet</div>';
@@ -352,7 +360,13 @@ esp_err_t StateHandler(httpd_req_t *request) {
                 snapshot.has_aggregate ? "true" : "false");
   httpd_resp_sendstr_chunk(request, buffer);
   SendCalculator(request, snapshot.calculator);
-  httpd_resp_sendstr_chunk(request, ",\"history\":[");
+  std::snprintf(buffer, sizeof(buffer),
+                ",\"statusLed\":{\"supported\":%s,\"mode\":\"%s\","
+                "\"state\":\"%s\"},\"history\":[",
+                StatusLedSupported() ? "true" : "false",
+                StatusLedModeName(GetStatusLedMode()),
+                StatusLedStateName(GetStatusLedState()));
+  httpd_resp_sendstr_chunk(request, buffer);
   for (std::size_t i = 0; i < snapshot.history_count; ++i) {
     const RollEvent &event = snapshot.history[i];
     if (i != 0) {
@@ -495,6 +509,9 @@ esp_err_t ActionHandler(httpd_req_t *request) {
   } else if (std::strcmp(operation, "clear") == 0) {
     model->ClearAggregate();
     success = true;
+  } else if (std::strcmp(operation, "ledMode") == 0) {
+    success = CycleStatusLedMode();
+    save_change = false;
   } else if (std::strcmp(operation, "calcStart") == 0) {
     if (!model->StartCalculator()) {
       httpd_resp_set_status(request, "409 Conflict");

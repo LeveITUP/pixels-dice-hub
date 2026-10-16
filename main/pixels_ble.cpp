@@ -90,6 +90,7 @@ struct CommandOperation {
   uint8_t request_index = 0;
   uint8_t responses = 0;
   bool legacy = false;
+  bool disconnecting = false;
 };
 
 CommandOperation command;
@@ -182,10 +183,20 @@ void DisconnectAfterCommand() {
     ESP_LOGW(kTag, "Unable to disconnect after %s: %d",
              CommandName(command.type), result);
     CompleteCommand();
+    return;
   }
+  command.disconnecting = true;
+  ble_npl_callout_reset(&command_timeout, ble_npl_time_ms_to_ticks32(2000));
 }
 
 void CommandTimedOut(ble_npl_event *) {
+  if (command.disconnecting) {
+    ESP_LOGW(kTag, "Pixel %08lx disconnect after %s timed out",
+             static_cast<unsigned long>(command.pixel_id),
+             CommandName(command.type));
+    CompleteCommand();
+    return;
+  }
   ESP_LOGW(kTag, "Pixel %08lx %s timed out",
            static_cast<unsigned long>(command.pixel_id),
            CommandName(command.type));
@@ -464,6 +475,7 @@ void BeginCommand(ble_npl_event *) {
     CompleteCommand();
     return;
   }
+  ble_npl_callout_reset(&command_timeout, ble_npl_time_ms_to_ticks32(15000));
   const int connect_result =
       ble_gap_connect(own_address_type, &command.address, 10000, nullptr,
                       GapEvent, nullptr);
@@ -684,7 +696,7 @@ void StartScan() {
       .itvl = BLE_GAP_SCAN_ITVL_MS(100),
       .window = static_cast<uint16_t>(
           sharing_radio ? BLE_GAP_SCAN_WIN_MS(50)
-                        : BLE_GAP_SCAN_WIN_MS(95)),
+                        : BLE_GAP_SCAN_WIN_MS(100)),
       .filter_policy = 0,
       .limited = 0,
       .passive = 0,
@@ -696,8 +708,8 @@ void StartScan() {
   if (result != 0 && result != BLE_HS_EALREADY) {
     ESP_LOGE(kTag, "Unable to start BLE scan: %d", result);
   } else if (result == 0) {
-    ESP_LOGI(kTag, "BLE scan duty set to %u%%",
-             sharing_radio ? 50U : 95U);
+    ESP_LOGI(kTag, "BLE active scan duty set to %u%%",
+             sharing_radio ? 50U : 100U);
   }
 }
 

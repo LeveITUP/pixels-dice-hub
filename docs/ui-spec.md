@@ -60,11 +60,11 @@ Each tile can contain:
 | Crooked | Red border and ring |
 | Stale/offline | Dim tile and grey ring after two minutes |
 
-The dashboard only includes paired dice that have changed physical roll state
-within the last 30 minutes. Pairing is retained when a tile disappears. After
-startup no die is considered active until it is handled or rolled; the empty
-dashboard shows active/paired discovery counts and prompts the player to handle
-a die or open pairing.
+The dashboard includes newly paired and restored dice immediately and keeps
+dice visible for 30 minutes after pairing, startup, or physical roll activity.
+Pairing is retained when a tile disappears. The empty dashboard shows
+active/paired discovery counts and prompts the player to handle a die or open
+pairing.
 | Battery under 15% | Red battery fill |
 | Charging | Green battery fill |
 | No completed roll | Em dash as value |
@@ -83,7 +83,30 @@ information hierarchy rather than final typography:
 
 ## Automatic orientation
 
-The selected ESP32-C6 touch board includes a QMI8658 accelerometer/gyroscope.
+The supported ESP32-C6 LCD and ESP32-S3 AMOLED touch boards include QMI8658
+accelerometer/gyroscopes. Each board profile maps its sensor axes to the display
+orientation before applying the shared rotation logic.
+
+## RGB status light
+
+Board profiles may provide an addressable RGB status light. Its mode is
+selected from the pairing/settings page when the selected profile advertises
+that capability.
+
+The Waveshare ESP32-C6-Touch-LCD-1.47 does not contain a programmable RGB LED.
+Its CHG and PWR indicators are connected to the charger and power rails rather
+than ESP32 GPIOs, so this control is hidden on that board.
+
+- `OFF`: the light remains dark.
+- `SOLID`: the current state colour remains at a fixed brightness.
+- `PULSE`: the current state colour gently pulses.
+
+State colours are amber while a die is handled, blue while any participating
+die is rolling, red while a participating die is crooked, and green after all
+dice that joined the current throw have reported `Rolled`. Completion waits
+briefly for advertisements from dice rolled simultaneously, remains green for
+five seconds, and then returns to idle. Dice already resting on faces when the
+hub starts do not trigger completion.
 The firmware samples acceleration at 10 Hz, requires eight stable readings
 before rotating, and applies hysteresis near diagonal/flat positions to avoid
 screen chatter. The accelerometer uses the board reference's ±2g range so
