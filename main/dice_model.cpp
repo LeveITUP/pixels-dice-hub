@@ -260,7 +260,6 @@ void DiceModel::RestorePaired(const uint32_t *pixel_ids, std::size_t count,
   for (std::size_t i = 0; i < dice_count_; ++i) {
     dice_[i] = {};
     dice_[i].pixel_id = pixel_ids[i];
-    dice_[i].last_activity_ms = now_ms;
   }
   die_history_ = {};
   die_history_count_ = {};

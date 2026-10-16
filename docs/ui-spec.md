@@ -60,11 +60,11 @@ Each tile can contain:
 | Crooked | Red border and ring |
 | Stale/offline | Dim tile and grey ring after two minutes |
 
-The dashboard includes newly paired and restored dice immediately and keeps
-dice visible for 30 minutes after pairing, startup, or physical roll activity.
-Pairing is retained when a tile disappears. The empty dashboard shows
-active/paired discovery counts and prompts the player to handle a die or open
-pairing.
+The dashboard includes newly paired dice immediately and keeps dice visible for
+30 minutes after pairing or physical roll activity. Restored pairings remain
+hidden after startup until each die is handled or rolled. Pairing is retained
+when a tile disappears. The empty dashboard shows active/paired discovery
+counts and prompts the player to handle a die or open pairing.
 | Battery under 15% | Red battery fill |
 | Charging | Green battery fill |
 | No completed roll | Em dash as value |
