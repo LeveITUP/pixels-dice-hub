@@ -36,10 +36,6 @@ changing the dice or web application; see the
 [project plan](docs/project-plan.md#hardware-targets) for selection criteria
 and porting phases.
 
-A 3D-printable two-part enclosure for the S3 AMOLED board with an internal
-603040 LiPo pocket lives in [`hardware/case/`](hardware/case/README.md)
-(STL + STEP + CadQuery source).
-
 The default display profile is `c6_lcd_147`. Select a profile at CMake
 configuration time with `-DPIXELS_BOARD_PROFILE=<profile>`. Unsupported profile
 names fail configuration rather than silently building for the wrong pinout.
