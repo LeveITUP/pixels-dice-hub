@@ -16,3 +16,6 @@ secrets.yaml
 *.bin
 *.elf
 *.map
+
+*.stp
+__pycache__/
