@@ -75,4 +75,26 @@ void SetOrientation(Hardware *hardware, Orientation orientation) {
   profile::SetOrientation(hardware, orientation);
 }
 
+esp_err_t PowerOff(Hardware *hardware) {
+  if (!GetCapabilities().has_power_off) {
+    return ESP_ERR_NOT_SUPPORTED;
+  }
+  return profile::PowerOff(hardware);
+}
+
+WakeReason GetWakeReason() { return profile::GetWakeReason(); }
+
+const char *WakeReasonName(WakeReason reason) {
+  switch (reason) {
+  case WakeReason::kPowerOn:
+    return "power-on";
+  case WakeReason::kButton:
+    return "button";
+  case WakeReason::kMotion:
+    return "motion";
+  default:
+    return "other";
+  }
+}
+
 } // namespace board

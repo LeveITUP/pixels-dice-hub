@@ -31,6 +31,14 @@ struct Capabilities {
   bool has_brightness;
   bool has_status_led;
   bool is_amoled;
+  bool has_power_off;
+};
+
+enum class WakeReason : uint8_t {
+  kPowerOn = 0,
+  kButton,
+  kMotion,
+  kOther,
 };
 
 struct RgbColor {
@@ -59,5 +67,9 @@ bool ReadAcceleration(Hardware *hardware, int16_t *x, int16_t *y, int16_t *z);
 void SetOrientation(Hardware *hardware, Orientation orientation);
 Orientation DetectOrientation(int16_t x, int16_t y,
                               Orientation current_orientation);
+// Puts the peripherals to sleep and enters deep sleep; only returns on error.
+esp_err_t PowerOff(Hardware *hardware);
+WakeReason GetWakeReason();
+const char *WakeReasonName(WakeReason reason);
 
 } // namespace board

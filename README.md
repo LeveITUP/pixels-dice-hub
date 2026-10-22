@@ -62,6 +62,9 @@ names fail configuration rather than silently building for the wrong pinout.
   off, solid, and pulsing modes selectable from the touchscreen or web UI.
 - Shows only dice handled or rolled within the last 30 minutes while retaining
   all pairings; the empty dashboard reports paired/discovered counts.
+- Battery-friendly power off on the ESP32-S3 AMOLED board: hold the aggregate
+  panel for 2 s (or leave the hub idle for 15 min) to enter deep sleep; press
+  `BOOT` or move the device to wake. Sleep current is roughly 0.3–1 mA.
 
 ## Planning artifacts
 
@@ -222,6 +225,8 @@ needed.
   eight-die maximum; see the
   [touchscreen UI audit](docs/touchscreen-ui-audit.md).
 - OTA partitions and firmware updates are not yet implemented.
+- Power off is only available on the ESP32-S3 AMOLED profile; the ESP32-C6 LCD
+  board has no sleep path yet and wake-on-touch is not implemented.
 - Named Pixels animation profiles are not exposed because animation indexes
   depend on the dataset installed on each die.
 

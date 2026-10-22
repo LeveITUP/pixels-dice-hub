@@ -7,7 +7,6 @@
 namespace app {
 namespace {
 
-constexpr uint64_t kRestoreGraceMs = 15000;
 constexpr uint64_t kCandidateLifetimeMs = 15000;
 
 class Lock {
@@ -132,9 +131,6 @@ void DiceModel::Ingest(const pixels::Advertisement &advertisement,
   if (die_index >= 0) {
     Die &die = dice_[die_index];
     const std::size_t index = static_cast<std::size_t>(die_index);
-    const bool first_observation_after_restore =
-        !has_advertised_roll_state_[index] &&
-        restore_grace_until_ms_ != 0 && now_ms >= restore_grace_until_ms_;
     const bool settled_face_changed =
         die.has_roll && die.face_index != advertisement.face_index;
     const pixels::RollState previous_state = advertised_roll_state_[index];
@@ -146,17 +142,13 @@ void DiceModel::Ingest(const pixels::Advertisement &advertisement,
         advertisement.roll_state == pixels::RollState::kHandling ||
         advertisement.roll_state == pixels::RollState::kRolling ||
         advertisement.roll_state == pixels::RollState::kCrooked;
-    const bool currently_completed =
-        advertisement.roll_state == pixels::RollState::kRolled ||
-        advertisement.roll_state == pixels::RollState::kOnFace;
     const bool first_observation_active =
-        !has_advertised_roll_state_[index] &&
-        (currently_moving || currently_completed);
+        !has_advertised_roll_state_[index] && currently_moving;
     const bool completed_roll =
         (advertisement.roll_state == pixels::RollState::kRolled &&
          ((has_advertised_roll_state_[index] &&
            previous_state != pixels::RollState::kRolled) ||
-          first_observation_after_restore || settled_face_changed)) ||
+          settled_face_changed)) ||
         (advertisement.roll_state == pixels::RollState::kOnFace &&
          (previous_state_was_moving || settled_face_changed));
     const bool physically_active =
@@ -265,7 +257,7 @@ bool DiceModel::Unpair(uint32_t pixel_id) {
 }
 
 void DiceModel::RestorePaired(const uint32_t *pixel_ids, std::size_t count,
-                              uint64_t now_ms) {
+                              uint64_t) {
   Lock lock(mutex_);
   dice_count_ = std::min(count, dice_.size());
   for (std::size_t i = 0; i < dice_count_; ++i) {
@@ -277,7 +269,6 @@ void DiceModel::RestorePaired(const uint32_t *pixel_ids, std::size_t count,
   die_history_next_ = {};
   advertised_roll_state_ = {};
   has_advertised_roll_state_ = {};
-  restore_grace_until_ms_ = now_ms + kRestoreGraceMs;
   ++revision_;
 }
 

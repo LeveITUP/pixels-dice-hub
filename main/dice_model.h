@@ -142,7 +142,6 @@ private:
   uint32_t aggregate_roll_count_ = 0;
   DiceCalculator calculator_{};
   uint32_t revision_ = 1;
-  uint64_t restore_grace_until_ms_ = 0;
 };
 
 } // namespace app

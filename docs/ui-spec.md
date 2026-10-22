@@ -32,6 +32,12 @@ Each tile can contain:
 ## Interaction
 
 - Tap the aggregate panel to cycle `SUM`, `HIGH`, and `LOW`.
+- On boards with `has_power_off` (ESP32-S3 AMOLED), hold the aggregate panel
+  for 2 s to power off: the screen shows `Powering off`, radios stop, the
+  panel and touch controller sleep, and the SoC enters deep sleep. The hub
+  also sleeps after 15 min with no touch and no dice activity. Press `BOOT`
+  or pick the device up (IMU wake-on-motion) to turn it back on; wake is a
+  normal cold boot with the usual clean dashboard.
 - Tap the separate `CLEAR` control to begin a new aggregate round.
 - Clearing a round does not erase the last-20-roll history.
 - Tap a die tile to identify it with a short blink and open its newest-first

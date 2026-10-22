@@ -246,6 +246,7 @@ const Capabilities &GetCapabilities() {
       .has_brightness = true,
       .has_status_led = false,
       .is_amoled = false,
+      .has_power_off = false,
   };
   return capabilities;
 }
@@ -307,5 +308,9 @@ void SetOrientation(Hardware *hardware, Orientation orientation) {
   lv_display_set_rotation(hardware->display,
                           rotations[static_cast<uint8_t>(orientation)]);
 }
+
+esp_err_t PowerOff(Hardware *) { return ESP_ERR_NOT_SUPPORTED; }
+
+WakeReason GetWakeReason() { return WakeReason::kPowerOn; }
 
 } // namespace board::profile

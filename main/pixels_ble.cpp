@@ -767,6 +767,22 @@ esp_err_t StartPixelsScanner(DiceModel *dice_model) {
   return ESP_OK;
 }
 
+esp_err_t StopPixelsScanner() {
+  if (!host_ready.exchange(false)) {
+    return ESP_OK;
+  }
+  const int cancel_result = ble_gap_disc_cancel();
+  if (cancel_result != 0 && cancel_result != BLE_HS_EALREADY) {
+    ESP_LOGW(kTag, "Unable to cancel BLE scan: %d", cancel_result);
+  }
+  const int stop_result = nimble_port_stop();
+  if (stop_result != 0) {
+    ESP_LOGW(kTag, "NimBLE stop returned %d", stop_result);
+    return ESP_FAIL;
+  }
+  return nimble_port_deinit();
+}
+
 void SetPixelsScannerWifiActive(bool active) {
   if (wifi_active.exchange(active) == active || !host_ready.load() ||
       command_pipeline_active.load()) {

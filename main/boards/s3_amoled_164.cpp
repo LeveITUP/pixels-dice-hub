@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_lcd_panel_io.h"
@@ -10,6 +12,7 @@
 #include "esp_lcd_sh8601.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "esp_sleep.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -30,6 +33,9 @@ constexpr int kDisplayData0Pin = 11;
 constexpr int kDisplayData1Pin = 12;
 constexpr int kDisplayData2Pin = 13;
 constexpr int kDisplayData3Pin = 14;
+constexpr gpio_num_t kBootButtonPin = GPIO_NUM_0;
+constexpr gpio_num_t kImuInt1Pin = GPIO_NUM_9;
+constexpr uint8_t kWakeOnMotionThresholdMg = 150;
 uint8_t brightness_percent = 75;
 bool imu_available;
 bool touch_available;
@@ -61,6 +67,7 @@ const Capabilities kCapabilities = {
     .has_brightness = true,
     .has_status_led = false,
     .is_amoled = true,
+    .has_power_off = true,
 };
 
 esp_err_t InitDisplay(Hardware *hardware) {
@@ -257,6 +264,69 @@ void SetOrientation(Hardware *hardware, Orientation orientation) {
       LV_DISPLAY_ROTATION_270};
   lv_display_set_rotation(hardware->display,
                           rotations[static_cast<uint8_t>(orientation)]);
+}
+
+esp_err_t PowerOff(Hardware *hardware) {
+  ESP_RETURN_ON_FALSE(hardware != nullptr, ESP_ERR_INVALID_ARG, kTag,
+                      "Hardware state is required");
+  if (hardware->panel != nullptr) {
+    esp_lcd_panel_disp_on_off(hardware->panel, false);
+  }
+  if (hardware->panel_io != nullptr) {
+    constexpr int kSleepInCommand = (0x02 << 24) | (0x10 << 8);
+    esp_lcd_panel_io_tx_param(hardware->panel_io, kSleepInCommand, nullptr, 0);
+    vTaskDelay(pdMS_TO_TICKS(120));
+  }
+  if (touch_available) {
+    const esp_err_t result = s3_amoled_ft3168_hibernate();
+    if (result != ESP_OK) {
+      ESP_LOGW(kTag, "Touch hibernate failed: %s", esp_err_to_name(result));
+    }
+  }
+  bool motion_wake = false;
+  if (imu_available) {
+    const esp_err_t result =
+        s3_amoled_qmi8658_enable_wake_on_motion(kWakeOnMotionThresholdMg);
+    motion_wake = result == ESP_OK;
+    if (!motion_wake) {
+      ESP_LOGW(kTag, "IMU wake-on-motion failed: %s", esp_err_to_name(result));
+    }
+  }
+
+  // Keep the panel out of reset so the SLPIN state is retained.
+  gpio_hold_en(static_cast<gpio_num_t>(kDisplayResetPin));
+  gpio_deep_sleep_hold_en();
+
+  rtc_gpio_pullup_en(kBootButtonPin);
+  rtc_gpio_pulldown_dis(kBootButtonPin);
+  ESP_RETURN_ON_ERROR(esp_sleep_enable_ext0_wakeup(kBootButtonPin, 0), kTag,
+                      "Button wake setup failed");
+  if (motion_wake) {
+    rtc_gpio_pulldown_en(kImuInt1Pin);
+    rtc_gpio_pullup_dis(kImuInt1Pin);
+    const esp_err_t result = esp_sleep_enable_ext1_wakeup_io(
+        1ULL << kImuInt1Pin, ESP_EXT1_WAKEUP_ANY_HIGH);
+    if (result != ESP_OK) {
+      ESP_LOGW(kTag, "Motion wake setup failed: %s", esp_err_to_name(result));
+    }
+  }
+  ESP_LOGI(kTag, "Entering deep sleep (wake: button%s)",
+           motion_wake ? " + motion" : "");
+  esp_deep_sleep_start();
+  return ESP_FAIL;
+}
+
+WakeReason GetWakeReason() {
+  switch (esp_sleep_get_wakeup_cause()) {
+  case ESP_SLEEP_WAKEUP_EXT0:
+    return WakeReason::kButton;
+  case ESP_SLEEP_WAKEUP_EXT1:
+    return WakeReason::kMotion;
+  case ESP_SLEEP_WAKEUP_UNDEFINED:
+    return WakeReason::kPowerOn;
+  default:
+    return WakeReason::kOther;
+  }
 }
 
 } // namespace board::profile

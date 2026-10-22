@@ -28,6 +28,7 @@ idf_component_register(
     "dice_calculator.cpp"
     "dice_model.cpp"
     "pixels_ble.cpp"
+    "power.cpp"
     "preferences.cpp"
     "status_led.cpp"
     "ui.cpp"

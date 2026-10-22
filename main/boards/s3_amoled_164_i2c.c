@@ -123,3 +123,61 @@ esp_err_t s3_amoled_ft3168_read(uint16_t *x, uint16_t *y, bool *pressed) {
   *y = (uint16_t)(((raw[2] & 0x0fU) << 8U) | raw[3]);
   return ESP_OK;
 }
+
+esp_err_t s3_amoled_ft3168_hibernate(void) {
+  // PMODE register: 0x03 = hibernate, only a hardware reset wakes it.
+  return write_register(FT3168_ADDRESS, 0xa5, 0x03);
+}
+
+static esp_err_t qmi8658_ctrl9_command(uint8_t command) {
+  esp_err_t result = write_register(QMI8658_ADDRESS, 0x0a, command);
+  if (result != ESP_OK) {
+    return result;
+  }
+  // Wait for CTRL9 CmdDone (STATUSINT bit7) then acknowledge.
+  for (int attempt = 0; attempt < 20; ++attempt) {
+    uint8_t status = 0;
+    if (read_registers(QMI8658_ADDRESS, 0x2d, &status, 1) == ESP_OK &&
+        (status & 0x80U) != 0) {
+      break;
+    }
+    vTaskDelay(pdMS_TO_TICKS(2));
+  }
+  result = write_register(QMI8658_ADDRESS, 0x0a, 0x00);
+  vTaskDelay(pdMS_TO_TICKS(2));
+  return result;
+}
+
+esp_err_t s3_amoled_qmi8658_enable_wake_on_motion(uint8_t threshold_mg) {
+  // Disable sensors while reconfiguring.
+  esp_err_t result = write_register(QMI8658_ADDRESS, 0x08, 0x00);
+  if (result != ESP_OK) {
+    return result;
+  }
+  // CTRL1: address auto-increment, INT1 push-pull enabled.
+  result = write_register(QMI8658_ADDRESS, 0x02, 0x48);
+  if (result != ESP_OK) {
+    return result;
+  }
+  // CTRL2: accel +-2g, low-power 21 Hz ODR.
+  result = write_register(QMI8658_ADDRESS, 0x03, 0x0d);
+  if (result != ESP_OK) {
+    return result;
+  }
+  // CAL1_L = threshold (1 mg/LSB); CAL1_H = INT1 select, initial level low,
+  // blanking time 4 samples.
+  result = write_register(QMI8658_ADDRESS, 0x0b, threshold_mg);
+  if (result != ESP_OK) {
+    return result;
+  }
+  result = write_register(QMI8658_ADDRESS, 0x0c, 0x80U | 0x04U);
+  if (result != ESP_OK) {
+    return result;
+  }
+  result = qmi8658_ctrl9_command(0x19); // CTRL_CMD_WRITE_WOM_SETTING
+  if (result != ESP_OK) {
+    return result;
+  }
+  // CTRL7: accel enabled only.
+  return write_register(QMI8658_ADDRESS, 0x08, 0x01);
+}

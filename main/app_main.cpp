@@ -4,6 +4,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "pixels_ble.h"
+#include "power.h"
 #include "preferences.h"
 #include "status_led.h"
 #include "ui.h"
@@ -29,6 +30,7 @@ extern "C" void app_main() {
   app::RestorePreferences(&model);
 
   ESP_ERROR_CHECK(board::Init(&hardware));
+  app::InitPower(&hardware, &model);
   ESP_ERROR_CHECK(app::StartStatusLed(&hardware, &model));
   ESP_ERROR_CHECK(app::StartUi(&hardware, &model));
   const bool wifi_enabled = app::RestoreWebNetworkEnabled(false);

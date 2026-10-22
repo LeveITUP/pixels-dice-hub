@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "lvgl.h"
 #include "pixels_ble.h"
+#include "power.h"
 #include "preferences.h"
 #include "status_led.h"
 #include "web_server.h"
@@ -25,6 +26,8 @@ constexpr uint32_t kDimmed = 0x334155;
 constexpr uint32_t kAccent = 0x2563eb;
 constexpr char kTag[] = "pixels_ui";
 constexpr int kReferencePortraitWidth = 172;
+constexpr uint32_t kPowerOffHoldMs = 2000;
+constexpr uint64_t kIdleSleepMs = 15ULL * 60ULL * 1000ULL;
 constexpr int kReferencePortraitHeight = 320;
 
 struct UiMetrics {
@@ -54,6 +57,10 @@ lv_obj_t *history_page;
 lv_obj_t *stats_page;
 lv_obj_t *calculator_page;
 lv_obj_t *mode_page;
+lv_obj_t *power_overlay;
+uint32_t aggregate_press_started_ms;
+bool aggregate_press_active;
+uint64_t last_activity_ms;
 lv_obj_t *stats_status_label;
 uint32_t history_pixel_id;
 std::size_t rendered_history_count;
@@ -385,9 +392,62 @@ void BuildModePage() {
 }
 
 void AggregateClicked(lv_event_t *) {
+  if (IsPowerOffPending()) {
+    return;
+  }
   BuildModePage();
   lv_obj_remove_flag(mode_page, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_foreground(mode_page);
+}
+
+void ShowPowerOffOverlay(const char *message) {
+  if (power_overlay == nullptr) {
+    power_overlay = lv_obj_create(root);
+    lv_obj_set_size(power_overlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_pos(power_overlay, 0, 0);
+    lv_obj_set_style_bg_color(power_overlay, Color(kBackground), 0);
+    lv_obj_set_style_border_width(power_overlay, 0, 0);
+    lv_obj_set_style_radius(power_overlay, 0, 0);
+    lv_obj_t *label =
+        MakeLabel(power_overlay, message, &lv_font_montserrat_18, kMuted);
+    lv_obj_center(label);
+  }
+  lv_obj_move_foreground(power_overlay);
+  lv_refr_now(nullptr);
+}
+
+void BeginPowerOff(const char *message) {
+  if (!IsPowerOffSupported() || IsPowerOffPending()) {
+    return;
+  }
+  ShowPowerOffOverlay(message);
+  RequestPowerOff();
+}
+
+void AggregatePressTracker(lv_event_t *event) {
+  if (!IsPowerOffSupported()) {
+    return;
+  }
+  switch (lv_event_get_code(event)) {
+  case LV_EVENT_PRESSED:
+    aggregate_press_started_ms = lv_tick_get();
+    aggregate_press_active = true;
+    break;
+  case LV_EVENT_PRESSING:
+    if (aggregate_press_active &&
+        lv_tick_elaps(aggregate_press_started_ms) >= kPowerOffHoldMs) {
+      aggregate_press_active = false;
+      ESP_LOGI(kTag, "Aggregate held; powering off");
+      BeginPowerOff("Powering off");
+    }
+    break;
+  case LV_EVENT_RELEASED:
+  case LV_EVENT_PRESS_LOST:
+    aggregate_press_active = false;
+    break;
+  default:
+    break;
+  }
 }
 
 void MakeBatteryIndicator(lv_obj_t *parent, const Die &die, bool stale) {
@@ -1266,6 +1326,15 @@ void UiTimer(lv_timer_t *) {
       0);
   const Snapshot snapshot = model->GetSnapshot(now_ms);
   const bool model_changed = snapshot.revision != rendered_revision;
+  if (model_changed || lv_display_get_inactive_time(nullptr) < 500) {
+    last_activity_ms = now_ms;
+  } else if (IsPowerOffSupported() && !IsPowerOffPending() &&
+             now_ms - last_activity_ms >= kIdleSleepMs) {
+    ESP_LOGI(kTag, "Idle for %llu min; powering off",
+             static_cast<unsigned long long>(kIdleSleepMs / 60000ULL));
+    BeginPowerOff("Sleeping");
+    return;
+  }
   const uint16_t dashboard_time_signature =
       DashboardTimeSignature(snapshot, now_ms);
   if (model_changed ||
@@ -1390,7 +1459,9 @@ esp_err_t StartUi(board::Hardware *board_hardware, DiceModel *dice_model) {
   lv_obj_set_style_radius(aggregate, Scale(10), 0);
   lv_obj_set_style_pad_all(aggregate, Scale(6), 0);
   lv_obj_add_flag(aggregate, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(aggregate, AggregateClicked, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(aggregate, AggregateClicked, LV_EVENT_SHORT_CLICKED,
+                      nullptr);
+  lv_obj_add_event_cb(aggregate, AggregatePressTracker, LV_EVENT_ALL, nullptr);
   aggregate_mode =
       MakeLabel(aggregate, "SUM  >", &lv_font_montserrat_14, 0xbfdbfe);
   lv_obj_align(aggregate_mode, LV_ALIGN_TOP_MID, 0, 0);
@@ -1432,6 +1503,7 @@ esp_err_t StartUi(board::Hardware *board_hardware, DiceModel *dice_model) {
   lv_obj_add_flag(mode_page, LV_OBJ_FLAG_HIDDEN);
 
   Relayout();
+  last_activity_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
   lv_timer_create(UiTimer, 250, nullptr);
   lvgl_port_unlock();
 
