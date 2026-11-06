@@ -11,6 +11,7 @@
 #include "lvgl.h"
 #include "pixels_ble.h"
 #include "power.h"
+#include "theme.h"
 #include "preferences.h"
 #include "status_led.h"
 #include "web_server.h"
@@ -18,12 +19,26 @@
 namespace app {
 namespace {
 
-constexpr uint32_t kBackground = 0x0b1020;
-constexpr uint32_t kPanel = 0x172033;
-constexpr uint32_t kText = 0xf8fafc;
-constexpr uint32_t kMuted = 0x94a3b8;
-constexpr uint32_t kDimmed = 0x334155;
-constexpr uint32_t kAccent = 0x2563eb;
+// Theme colour roles; see theme.h. Macros so existing call sites keep the
+// constant-like names while following the active theme.
+#define kBackground (CurrentTheme().background)
+#define kPanel (CurrentTheme().panel)
+#define kText (CurrentTheme().text)
+#define kOnAccent (CurrentTheme().on_accent)
+#define kMuted (CurrentTheme().muted)
+#define kDimmed (CurrentTheme().dimmed)
+#define kAccent (CurrentTheme().accent)
+#define kAccentText (CurrentTheme().accent_text)
+#define kAccentAlt (CurrentTheme().accent_alt)
+#define kButton (CurrentTheme().button)
+#define kDanger (CurrentTheme().danger)
+#define kDangerBg (CurrentTheme().danger_bg)
+#define kSuccess (CurrentTheme().success)
+#define kSuccessBg (CurrentTheme().success_bg)
+#define kWarning (CurrentTheme().warning)
+#define kInfo (CurrentTheme().info)
+#define kViolet (CurrentTheme().violet)
+#define kStale (CurrentTheme().stale)
 constexpr char kTag[] = "pixels_ui";
 constexpr int kReferencePortraitWidth = 172;
 constexpr uint32_t kPowerOffHoldMs = 2000;
@@ -60,6 +75,7 @@ int rendered_battery_percent = -1;
 bool rendered_battery_usb;
 bool rendered_battery_valid;
 lv_obj_t *pair_page;
+lv_obj_t *dice_page;
 lv_obj_t *history_page;
 lv_obj_t *stats_page;
 lv_obj_t *calculator_page;
@@ -193,6 +209,15 @@ void IdleSleepToggle(lv_event_t *) {
   BuildPairing(snapshot);
 }
 
+void RebuildScreen();
+
+void ThemeToggle(lv_event_t *) {
+  CycleTheme();
+  // Deferred: the pressed button is destroyed by the rebuild and must not be
+  // deleted while its own event is still being dispatched.
+  lv_async_call([](void *) { RebuildScreen(); }, nullptr);
+}
+
 void StatusLedToggle(lv_event_t *) {
   if (!CycleStatusLedMode()) {
     return;
@@ -225,15 +250,15 @@ void CalculatorAdjust(lv_event_t *event) {
 uint32_t StateColor(pixels::RollState state) {
   switch (state) {
   case pixels::RollState::kRolling:
-    return 0x38bdf8;
+    return kInfo;
   case pixels::RollState::kHandling:
-    return 0xf59e0b;
+    return kWarning;
   case pixels::RollState::kCrooked:
-    return 0xf87171;
+    return kDanger;
   case pixels::RollState::kRolled:
-    return 0x4ade80;
+    return kSuccess;
   case pixels::RollState::kOnFace:
-    return 0xa78bfa;
+    return kViolet;
   case pixels::RollState::kUnknown:
   default:
     return kMuted;
@@ -243,16 +268,20 @@ uint32_t StateColor(pixels::RollState state) {
 uint32_t StateBackground(pixels::RollState state) {
   switch (state) {
   case pixels::RollState::kRolling:
-    return 0x102b3f;
   case pixels::RollState::kHandling:
-    return 0x302716;
   case pixels::RollState::kCrooked:
-    return 0x321820;
   case pixels::RollState::kRolled:
-    return 0x173322;
+    return ThemeTint(StateColor(state));
   default:
     return kPanel;
   }
+}
+
+void OpenDicePage(lv_event_t *);
+void OpenModePageFromSettings(lv_event_t *);
+
+void CloseDicePage(lv_event_t *) {
+  lv_obj_add_flag(dice_page, LV_OBJ_FLAG_HIDDEN);
 }
 
 void ClosePairing(lv_event_t *) {
@@ -353,7 +382,8 @@ void AddModeOption(lv_obj_t *page, int y, const char *label,
   lv_obj_add_event_cb(button, ModeSelected, LV_EVENT_CLICKED,
                       reinterpret_cast<void *>(selection));
   lv_obj_t *text =
-      MakeMenuLabel(button, label, &lv_font_montserrat_12, kText);
+      MakeMenuLabel(button, label, &lv_font_montserrat_12,
+                    selected ? kOnAccent : kText);
   lv_obj_align(text, LV_ALIGN_LEFT_MID, Scale(4), 0);
 }
 
@@ -372,10 +402,10 @@ void BuildModePage() {
   lv_obj_t *back = lv_button_create(mode_page);
   lv_obj_set_size(back, Scale(64), Scale(34));
   lv_obj_align(back, LV_ALIGN_TOP_RIGHT, 0, 0);
-  lv_obj_set_style_bg_color(back, Color(0x334155), 0);
+  lv_obj_set_style_bg_color(back, Color(kButton), 0);
   lv_obj_add_event_cb(back, CloseModePage, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *back_label =
-      MakeMenuLabel(back, "BACK", &lv_font_montserrat_12, kText);
+      MakeMenuLabel(back, "BACK", &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(back_label);
 
   int y = Scale(44);
@@ -483,16 +513,16 @@ void OpenResetDialog(lv_event_t *) {
   lv_obj_t *cancel = lv_button_create(reset_dialog);
   lv_obj_set_size(cancel, button_width, Scale(40));
   lv_obj_align(cancel, LV_ALIGN_BOTTOM_LEFT, 0, -Scale(20));
-  lv_obj_set_style_bg_color(cancel, Color(0x334155), 0);
+  lv_obj_set_style_bg_color(cancel, Color(kButton), 0);
   lv_obj_add_event_cb(cancel, CloseResetDialog, LV_EVENT_CLICKED, nullptr);
-  lv_obj_center(MakeMenuLabel(cancel, "CANCEL", &lv_font_montserrat_12, kText));
+  lv_obj_center(MakeMenuLabel(cancel, "CANCEL", &lv_font_montserrat_12, kOnAccent));
 
   lv_obj_t *confirm = lv_button_create(reset_dialog);
   lv_obj_set_size(confirm, button_width, Scale(40));
   lv_obj_align(confirm, LV_ALIGN_BOTTOM_RIGHT, 0, -Scale(20));
-  lv_obj_set_style_bg_color(confirm, Color(0x991b1b), 0);
+  lv_obj_set_style_bg_color(confirm, Color(kDangerBg), 0);
   lv_obj_add_event_cb(confirm, ConfirmFactoryReset, LV_EVENT_CLICKED, nullptr);
-  lv_obj_center(MakeMenuLabel(confirm, "RESET", &lv_font_montserrat_12, kText));
+  lv_obj_center(MakeMenuLabel(confirm, "RESET", &lv_font_montserrat_12, kOnAccent));
 
   lv_obj_move_foreground(reset_dialog);
 }
@@ -531,10 +561,10 @@ void AggregatePressTracker(lv_event_t *event) {
 void MakeBatteryIndicator(lv_obj_t *parent, const Die &die, bool stale) {
   // Same tiers as the hub gauge; battery_state 1 is the die's own "low" flag.
   const bool die_low = die.battery_state == 1 || die.battery < 15;
-  const uint32_t color = stale          ? 0x64748b
-                         : die.charging ? 0x4ade80
-                         : die_low      ? 0xf87171
-                         : die.battery <= 25 ? 0xf59e0b
+  const uint32_t color = stale          ? kStale
+                         : die.charging ? kSuccess
+                         : die_low      ? kDanger
+                         : die.battery <= 25 ? kWarning
                                              : kMuted;
   lv_obj_t *body = lv_obj_create(parent);
   lv_obj_set_size(body, Scale(18), Scale(10));
@@ -679,16 +709,16 @@ void BuildHistory(uint32_t pixel_id, uint64_t now_ms) {
   lv_obj_set_style_bg_color(done, Color(kAccent), 0);
   lv_obj_add_event_cb(done, CloseHistory, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *done_label =
-      MakeMenuLabel(done, "BACK", &lv_font_montserrat_12, kText);
+      MakeMenuLabel(done, "BACK", &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(done_label);
 
   lv_obj_t *info = lv_button_create(history_page);
   lv_obj_set_size(info, Scale(60), Scale(34));
   lv_obj_align(info, LV_ALIGN_TOP_RIGHT, -Scale(64), -Scale(2));
-  lv_obj_set_style_bg_color(info, Color(0x334155), 0);
+  lv_obj_set_style_bg_color(info, Color(kButton), 0);
   lv_obj_add_event_cb(info, OpenStats, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *info_label =
-      MakeMenuLabel(info, "INFO", &lv_font_montserrat_12, kText);
+      MakeMenuLabel(info, "INFO", &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(info_label);
 
   lv_obj_t *list = lv_obj_create(history_page);
@@ -717,7 +747,7 @@ void BuildHistory(uint32_t pixel_id, uint64_t now_ms) {
     lv_obj_t *row = lv_obj_create(list);
     lv_obj_set_width(row, lv_pct(100));
     lv_obj_set_height(row, Scale(36));
-    StyleCard(row, 0x334155);
+    StyleCard(row, kButton);
 
     char number[8];
     std::snprintf(number, sizeof(number), "#%u",
@@ -765,7 +795,7 @@ void BuildStats(uint32_t pixel_id, uint64_t now_ms) {
   lv_obj_set_style_bg_color(back, Color(kAccent), 0);
   lv_obj_add_event_cb(back, CloseStats, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *back_label =
-      MakeMenuLabel(back, "BACK", &lv_font_montserrat_12, kText);
+      MakeMenuLabel(back, "BACK", &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(back_label);
 
   lv_obj_t *details = lv_obj_create(stats_page);
@@ -786,10 +816,10 @@ void BuildStats(uint32_t pixel_id, uint64_t now_ms) {
   lv_obj_t *unpair = lv_button_create(stats_page);
   lv_obj_set_size(unpair, lv_pct(100), Scale(42));
   lv_obj_align(unpair, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_obj_set_style_bg_color(unpair, Color(0x991b1b), 0);
+  lv_obj_set_style_bg_color(unpair, Color(kDangerBg), 0);
   lv_obj_add_event_cb(unpair, UnpairFromStats, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *unpair_label =
-      MakeMenuLabel(unpair, "UNPAIR DIE", &lv_font_montserrat_12, kText);
+      MakeMenuLabel(unpair, "UNPAIR DIE", &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(unpair_label);
 }
 
@@ -850,10 +880,12 @@ uint16_t DashboardTimeSignature(const Snapshot &snapshot, uint64_t now_ms) {
 }
 
 void BuildPairing(const Snapshot &snapshot) {
-  rendered_pairing_signature = PairingSignature(snapshot);
+  (void)snapshot;
   rendered_pairing_network_status = GetWebNetworkStatus();
   lv_obj_clean(pair_page);
   StylePage(pair_page);
+  lv_obj_add_flag(pair_page, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(pair_page, LV_DIR_VER);
 
   const BatteryStatus battery = GetBatteryStatus();
   rendered_pairing_battery_percent = battery.valid ? battery.percent : -1;
@@ -866,82 +898,92 @@ void BuildPairing(const Snapshot &snapshot) {
   lv_obj_set_style_bg_color(done, Color(kAccent), 0);
   lv_obj_add_event_cb(done, ClosePairing, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *done_label =
-      MakeMenuLabel(done, "DONE", &lv_font_montserrat_12, kText);
+      MakeMenuLabel(done, "DONE", &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(done_label);
 
   const NetworkStatus network_status = rendered_pairing_network_status;
   const bool network_enabled = network_status != NetworkStatus::kOff;
-  lv_obj_t *wifi = lv_button_create(pair_page);
-  lv_obj_set_size(wifi, lv_pct(100), Scale(30));
-  lv_obj_set_pos(wifi, 0, Scale(34));
-  lv_obj_set_style_bg_color(wifi,
-                            Color(network_enabled ? 0x166534 : 0x334155), 0);
-  lv_obj_add_event_cb(wifi, WifiToggle, LV_EVENT_CLICKED, nullptr);
-  char wifi_text[48];
-  std::snprintf(wifi_text, sizeof(wifi_text), "WIFI %s - TAP TO %s",
-                NetworkStatusName(network_status),
-                network_enabled ? "DISABLE" : "ENABLE");
-  lv_obj_t *wifi_label =
-      MakeMenuLabel(wifi, wifi_text, &lv_font_montserrat_12, kText);
-  lv_obj_center(wifi_label);
+  // Settings rows share the DONE button's proportions: 34 px tall with a
+  // 6 px gap so they read as buttons rather than list entries.
+  constexpr int kRowHeight = 34;
+  constexpr int kRowStep = 40;
+  int list_top = Scale(38);
+  auto add_setting = [&](uint32_t background, lv_event_cb_t handler,
+                     const char *text) {
+    lv_obj_t *row = lv_button_create(pair_page);
+    lv_obj_set_size(row, lv_pct(100), Scale(kRowHeight));
+    lv_obj_set_pos(row, 0, list_top);
+    lv_obj_set_style_bg_color(row, Color(background), 0);
+    lv_obj_set_style_radius(row, Scale(8), 0);
+    lv_obj_add_event_cb(row, handler, LV_EVENT_CLICKED, nullptr);
+    lv_obj_center(MakeMenuLabel(row, text, &lv_font_montserrat_12, kOnAccent));
+    list_top += Scale(kRowStep);
+    return row;
+  };
 
-  int list_top = Scale(70);
+  add_setting(kAccent, OpenDicePage, LV_SYMBOL_BLUETOOTH " PAIR DICE");
+  add_setting(kButton, OpenModePageFromSettings, "RESULT / GAME");
+
+  char wifi_text[32];
+  std::snprintf(wifi_text, sizeof(wifi_text), "WIFI %s",
+                NetworkStatusName(network_status));
+  add_setting(network_enabled ? kSuccessBg : kButton, WifiToggle, wifi_text);
+
   if (StatusLedSupported()) {
-    lv_obj_t *status_led = lv_button_create(pair_page);
-    lv_obj_set_size(status_led, lv_pct(100), Scale(30));
-    lv_obj_set_pos(status_led, 0, Scale(68));
-    lv_obj_set_style_bg_color(
-        status_led,
-        Color(GetStatusLedMode() == StatusLedMode::kOff ? 0x334155
-                                                        : 0x1d4ed8),
-        0);
-    lv_obj_add_event_cb(status_led, StatusLedToggle, LV_EVENT_CLICKED, nullptr);
-    char status_led_text[48];
-    std::snprintf(status_led_text, sizeof(status_led_text),
-                  "STATUS LIGHT %s - TAP TO CHANGE",
+    char status_led_text[32];
+    std::snprintf(status_led_text, sizeof(status_led_text), "STATUS LIGHT %s",
                   StatusLedModeName(GetStatusLedMode()));
-    lv_obj_t *status_led_label =
-        MakeMenuLabel(status_led, status_led_text, &lv_font_montserrat_12,
-                      kText);
-    lv_obj_center(status_led_label);
-    list_top = Scale(104);
+    add_setting(GetStatusLedMode() == StatusLedMode::kOff ? kButton : kAccentAlt,
+            StatusLedToggle, status_led_text);
   }
 
-  if (IsPowerOffSupported()) {
-    lv_obj_t *sleep = lv_button_create(pair_page);
-    lv_obj_set_size(sleep, lv_pct(100), Scale(30));
-    lv_obj_set_pos(sleep, 0, list_top - Scale(2));
-    lv_obj_set_style_bg_color(
-        sleep, Color(IdleSleepMinutes() == 0 ? 0x334155 : 0x1d4ed8), 0);
-    lv_obj_add_event_cb(sleep, IdleSleepToggle, LV_EVENT_CLICKED, nullptr);
-    char sleep_text[48];
-    std::snprintf(sleep_text, sizeof(sleep_text),
-                  "AUTO SLEEP %s - TAP TO CHANGE", IdleSleepName());
-    lv_obj_center(
-        MakeMenuLabel(sleep, sleep_text, &lv_font_montserrat_12, kText));
-    list_top += Scale(34);
+  char theme_text[40];
+  std::snprintf(theme_text, sizeof(theme_text), "THEME %s",
+                CurrentTheme().name);
+  add_setting(kAccentAlt, ThemeToggle, theme_text);
 
-    lv_obj_t *power = lv_button_create(pair_page);
-    lv_obj_set_size(power, lv_pct(100), Scale(30));
-    lv_obj_set_pos(power, 0, list_top - Scale(2));
-    lv_obj_set_style_bg_color(power, Color(0x991b1b), 0);
-    lv_obj_add_event_cb(power, ManualPowerOff, LV_EVENT_CLICKED, nullptr);
+  if (IsPowerOffSupported()) {
+    char sleep_text[32];
+    std::snprintf(sleep_text, sizeof(sleep_text), "AUTO SLEEP %s",
+                  IdleSleepName());
+    add_setting(IdleSleepMinutes() == 0 ? kButton : kAccentAlt, IdleSleepToggle,
+            sleep_text);
+
     char power_text[48];
     if (battery.supported && battery.valid) {
       std::snprintf(power_text, sizeof(power_text),
-                    LV_SYMBOL_POWER " POWER OFF  -  %d%%%s", battery.percent,
-                    battery.external_power ? " PLUGGED IN" : "");
+                    LV_SYMBOL_POWER " POWER OFF  -  %d%%", battery.percent);
     } else {
       std::snprintf(power_text, sizeof(power_text), LV_SYMBOL_POWER " POWER OFF");
     }
-    lv_obj_t *power_label =
-        MakeMenuLabel(power, power_text, &lv_font_montserrat_12, kText);
-    lv_obj_center(power_label);
-    list_top += Scale(34);
+    add_setting(kDangerBg, ManualPowerOff, power_text);
   }
 
-  lv_obj_t *list = lv_obj_create(pair_page);
-  const int page_height = lv_obj_get_height(pair_page);
+  lv_obj_t *reset = add_setting(kPanel, OpenResetDialog,
+                                LV_SYMBOL_WARNING " FACTORY RESET");
+  lv_obj_set_style_border_width(reset, Scale(1), 0);
+  lv_obj_set_style_border_color(reset, Color(kDangerBg), 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(reset, 0), Color(kDanger), 0);
+}
+
+void BuildDicePage(const Snapshot &snapshot) {
+  rendered_pairing_signature = PairingSignature(snapshot);
+  lv_obj_clean(dice_page);
+  StylePage(dice_page);
+
+  lv_obj_t *title =
+      MakeMenuLabel(dice_page, "PAIR DICE", &lv_font_montserrat_14, kText);
+  lv_obj_align(title, LV_ALIGN_TOP_LEFT, Scale(2), Scale(2));
+  lv_obj_t *back = lv_button_create(dice_page);
+  lv_obj_set_size(back, Scale(64), Scale(34));
+  lv_obj_align(back, LV_ALIGN_TOP_RIGHT, 0, -Scale(2));
+  lv_obj_set_style_bg_color(back, Color(kButton), 0);
+  lv_obj_add_event_cb(back, CloseDicePage, LV_EVENT_CLICKED, nullptr);
+  lv_obj_center(MakeMenuLabel(back, "BACK", &lv_font_montserrat_12, kOnAccent));
+
+  const int list_top = Scale(38);
+  lv_obj_t *list = lv_obj_create(dice_page);
+  const int page_height = lv_obj_get_height(dice_page);
   lv_obj_set_size(list, lv_pct(100),
                   std::max(page_height - list_top - Scale(6), Scale(60)));
   lv_obj_set_pos(list, 0, list_top);
@@ -957,7 +999,7 @@ void BuildPairing(const Snapshot &snapshot) {
     lv_obj_t *row = lv_obj_create(list);
     lv_obj_set_width(row, lv_pct(100));
     lv_obj_set_height(row, Scale(56));
-    StyleCard(row, paired ? 0x22c55e : 0x38bdf8);
+    StyleCard(row, paired ? kSuccess : kInfo);
 
     char heading[32];
     std::snprintf(heading, sizeof(heading), "%s  %s",
@@ -976,13 +1018,13 @@ void BuildPairing(const Snapshot &snapshot) {
     lv_obj_t *button = lv_button_create(row);
     lv_obj_set_size(button, Scale(64), Scale(34));
     lv_obj_align(button, LV_ALIGN_RIGHT_MID, 0, 0);
-    lv_obj_set_style_bg_color(button, Color(paired ? 0x334155 : kAccent), 0);
+    lv_obj_set_style_bg_color(button, Color(paired ? kButton : kAccent), 0);
     lv_obj_add_event_cb(
         button, PairAction, LV_EVENT_CLICKED,
         reinterpret_cast<void *>(static_cast<uintptr_t>(die.pixel_id)));
     lv_obj_t *button_label =
         MakeMenuLabel(button, paired ? "REMOVE" : "ADD",
-                      &lv_font_montserrat_12, kText);
+                      &lv_font_montserrat_12, kOnAccent);
     lv_obj_center(button_label);
   };
 
@@ -992,15 +1034,25 @@ void BuildPairing(const Snapshot &snapshot) {
   for (std::size_t i = 0; i < snapshot.dice_count; ++i) {
     add_row(snapshot.dice[i], true);
   }
+  if (snapshot.candidate_count == 0 && snapshot.dice_count == 0) {
+    lv_obj_t *hint = MakeMenuLabel(list, "WAKE A DIE TO FIND IT",
+                                   &lv_font_montserrat_12, kMuted);
+    lv_obj_set_style_pad_top(hint, Scale(12), 0);
+  }
+}
 
-  lv_obj_t *reset = lv_button_create(list);
-  lv_obj_set_size(reset, lv_pct(100), Scale(30));
-  lv_obj_set_style_bg_color(reset, Color(kPanel), 0);
-  lv_obj_set_style_border_width(reset, Scale(1), 0);
-  lv_obj_set_style_border_color(reset, Color(0x991b1b), 0);
-  lv_obj_add_event_cb(reset, OpenResetDialog, LV_EVENT_CLICKED, nullptr);
-  lv_obj_center(MakeMenuLabel(reset, LV_SYMBOL_WARNING " FACTORY RESET",
-                              &lv_font_montserrat_12, 0xf87171));
+void OpenDicePage(lv_event_t *) {
+  const uint64_t now_ms =
+      static_cast<uint64_t>(esp_timer_get_time() / 1000);
+  BuildDicePage(model->GetSnapshot(now_ms));
+  lv_obj_remove_flag(dice_page, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(dice_page);
+}
+
+void OpenModePageFromSettings(lv_event_t *) {
+  BuildModePage();
+  lv_obj_remove_flag(mode_page, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(mode_page);
 }
 
 void OpenPairing(lv_event_t *) {
@@ -1025,13 +1077,13 @@ void AddCalculatorControl(lv_obj_t *parent, int y, const char *label,
     lv_obj_t *minus = lv_button_create(parent);
     lv_obj_set_size(minus, Scale(34), Scale(32));
     lv_obj_set_pos(minus, width - Scale(108), y);
-    lv_obj_set_style_bg_color(minus, Color(0x334155), 0);
+    lv_obj_set_style_bg_color(minus, Color(kButton), 0);
     const uintptr_t encoded =
         (static_cast<uintptr_t>(setting) << 8U) | 0xffU;
     lv_obj_add_event_cb(minus, CalculatorAdjust, LV_EVENT_CLICKED,
                         reinterpret_cast<void *>(encoded));
     lv_obj_t *minus_label =
-        MakeMenuLabel(minus, "-", &lv_font_montserrat_18, kText);
+        MakeMenuLabel(minus, "-", &lv_font_montserrat_18, kOnAccent);
     lv_obj_center(minus_label);
   }
 
@@ -1047,20 +1099,21 @@ void AddCalculatorControl(lv_obj_t *parent, int y, const char *label,
                         reinterpret_cast<void *>(encoded));
   }
   lv_obj_t *value_label =
-      MakeMenuLabel(value_button, value, &lv_font_montserrat_12, kText);
+      MakeMenuLabel(value_button, value, &lv_font_montserrat_12,
+                    toggle ? kOnAccent : kText);
   lv_obj_center(value_label);
 
   if (!toggle) {
     lv_obj_t *plus = lv_button_create(parent);
     lv_obj_set_size(plus, Scale(34), Scale(32));
     lv_obj_set_pos(plus, width - Scale(34), y);
-    lv_obj_set_style_bg_color(plus, Color(0x334155), 0);
+    lv_obj_set_style_bg_color(plus, Color(kButton), 0);
     const uintptr_t encoded =
         (static_cast<uintptr_t>(setting) << 8U) | 1U;
     lv_obj_add_event_cb(plus, CalculatorAdjust, LV_EVENT_CLICKED,
                         reinterpret_cast<void *>(encoded));
     lv_obj_t *plus_label =
-        MakeMenuLabel(plus, "+", &lv_font_montserrat_18, kText);
+        MakeMenuLabel(plus, "+", &lv_font_montserrat_18, kOnAccent);
     lv_obj_center(plus_label);
   }
 }
@@ -1083,20 +1136,20 @@ void BuildCalculator() {
   lv_obj_t *back = lv_button_create(calculator_page);
   lv_obj_set_size(back, Scale(64), Scale(34));
   lv_obj_align(back, LV_ALIGN_TOP_RIGHT, 0, -Scale(2));
-  lv_obj_set_style_bg_color(back, Color(0x334155), 0);
+  lv_obj_set_style_bg_color(back, Color(kButton), 0);
   lv_obj_add_event_cb(back, CloseCalculator, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *back_label =
       MakeMenuLabel(back, snapshot.status == CalculatorStatus::kRolling
                               ? "CANCEL"
                               : "BACK",
-                    &lv_font_montserrat_12, kText);
+                    &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(back_label);
 
   if (snapshot.status == CalculatorStatus::kRolling ||
       snapshot.status == CalculatorStatus::kComplete) {
     lv_obj_t *preset =
         MakeLabel(calculator_page, CalculatorPresetName(snapshot.config.preset),
-                  &lv_font_montserrat_12, 0x60a5fa);
+                  &lv_font_montserrat_12, kInfo);
     lv_obj_set_pos(preset, Scale(2), Scale(38));
 
     lv_obj_t *instruction =
@@ -1118,8 +1171,8 @@ void BuildCalculator() {
           MakeLabel(calculator_page, snapshot.result_text,
                     &lv_font_montserrat_32,
                     snapshot.has_check && !snapshot.check_passed
-                        ? 0xf87171
-                        : 0x4ade80);
+                        ? kDanger
+                        : kSuccess);
       lv_obj_set_width(result, lv_pct(100));
       lv_obj_set_style_text_align(result, LV_TEXT_ALIGN_CENTER, 0);
       if (landscape) {
@@ -1138,7 +1191,7 @@ void BuildCalculator() {
       lv_obj_set_style_bg_color(again, Color(kAccent), 0);
       lv_obj_add_event_cb(again, CalculatorStart, LV_EVENT_CLICKED, nullptr);
       lv_obj_t *again_label =
-          MakeLabel(again, "ROLL AGAIN", &lv_font_montserrat_14, kText);
+          MakeLabel(again, "ROLL AGAIN", &lv_font_montserrat_14, kOnAccent);
       lv_obj_center(again_label);
     }
     return;
@@ -1154,7 +1207,7 @@ void BuildCalculator() {
   lv_obj_remove_flag(preset, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t *preset_label =
       MakeLabel(preset, CalculatorPresetName(snapshot.config.preset),
-                &lv_font_montserrat_12, kText);
+                &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(preset_label);
 
   int y = Scale(84);
@@ -1212,7 +1265,7 @@ void BuildCalculator() {
   if (snapshot.status == CalculatorStatus::kError) {
     lv_obj_t *error =
         MakeLabel(calculator_page, snapshot.instruction,
-                  &lv_font_montserrat_12, 0xf87171);
+                  &lv_font_montserrat_12, kDanger);
     lv_obj_set_width(error, lv_pct(100));
     lv_obj_set_pos(error, Scale(2),
                    std::min(y + Scale(2), Scale(242)));
@@ -1226,10 +1279,10 @@ void BuildCalculator() {
   } else {
     lv_obj_align(start, LV_ALIGN_BOTTOM_MID, 0, 0);
   }
-  lv_obj_set_style_bg_color(start, Color(0x166534), 0);
+  lv_obj_set_style_bg_color(start, Color(kSuccessBg), 0);
   lv_obj_add_event_cb(start, CalculatorStart, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *start_label =
-      MakeLabel(start, "START ROUND", &lv_font_montserrat_14, kText);
+      MakeLabel(start, "START ROUND", &lv_font_montserrat_14, kOnAccent);
   lv_obj_center(start_label);
 }
 
@@ -1309,7 +1362,7 @@ void BuildDashboard(const Snapshot &snapshot, uint64_t now_ms) {
   if (active_count == 0) {
     lv_obj_t *empty = lv_obj_create(content);
     lv_obj_set_size(empty, tile_width, tile_height);
-    StyleCard(empty, 0x334155);
+    StyleCard(empty, kButton);
     lv_obj_add_flag(empty, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(empty, OpenPairing, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *title =
@@ -1329,8 +1382,7 @@ void BuildDashboard(const Snapshot &snapshot, uint64_t now_ms) {
     return;
   }
 
-  constexpr uint32_t accents[] = {0x8b5cf6, 0x38bdf8, 0xf59e0b, 0x22c55e,
-                                  0xec4899, 0x06b6d4, 0xf97316, 0x84cc16};
+  const uint32_t *accents = CurrentTheme().tile_accents;
   for (std::size_t i = 0; i < active_count; ++i) {
     const Die &die = snapshot.dice[active_indices[i]];
     const int column = static_cast<int>(i) % columns;
@@ -1346,7 +1398,7 @@ void BuildDashboard(const Snapshot &snapshot, uint64_t now_ms) {
     const bool stale =
         die.last_seen_ms == 0 || now_ms - die.last_seen_ms > kDieOfflineMs;
     const uint32_t state_color = StateColor(die.roll_state);
-    StyleCard(tile, stale ? 0x64748b : state_color);
+    StyleCard(tile, stale ? kStale : state_color);
     if (!stale) {
       lv_obj_set_style_bg_color(tile, Color(StateBackground(die.roll_state)),
                                 0);
@@ -1385,7 +1437,7 @@ void BuildDashboard(const Snapshot &snapshot, uint64_t now_ms) {
     lv_obj_set_style_bg_opa(state_ring, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(state_ring, Scale(3), 0);
     lv_obj_set_style_border_color(
-        state_ring, Color(stale ? 0x64748b : state_color), 0);
+        state_ring, Color(stale ? kStale : state_color), 0);
     lv_obj_set_style_pad_all(state_ring, 0, 0);
     lv_obj_remove_flag(state_ring, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(state_ring, LV_ALIGN_BOTTOM_LEFT, 0, 0);
@@ -1440,7 +1492,7 @@ lv_obj_t *MakePlainBox(lv_obj_t *parent) {
 
 void BuildHeaderBattery(lv_obj_t *parent) {
   battery_bolt = MakeLabel(parent, LV_SYMBOL_CHARGE, &lv_font_montserrat_12,
-                           0x4ade80);
+                           kSuccess);
   lv_obj_add_flag(battery_bolt, LV_OBJ_FLAG_HIDDEN);
 
   lv_obj_t *gauge = MakePlainBox(parent);
@@ -1483,9 +1535,9 @@ void UpdateHeaderBattery() {
   rendered_battery_percent = battery.percent;
   rendered_battery_usb = battery.external_power;
   const uint32_t color = !battery.valid    ? kDimmed
-                         : battery.external_power ? 0x4ade80
-                         : battery.low       ? 0xf87171
-                         : battery.percent <= 25 ? 0xf59e0b
+                         : battery.external_power ? kSuccess
+                         : battery.low       ? kDanger
+                         : battery.percent <= 25 ? kWarning
                                                  : kMuted;
   lv_obj_set_style_border_color(battery_body, Color(color), 0);
   lv_obj_set_style_bg_color(battery_terminal, Color(color), 0);
@@ -1527,11 +1579,11 @@ void UiTimer(lv_timer_t *) {
   lv_obj_set_style_text_color(
       network_status_label,
       Color(network_status == NetworkStatus::kConnected
-                ? 0x4ade80
+                ? kSuccess
                 : network_status == NetworkStatus::kConnecting
-                      ? 0xf59e0b
+                      ? kWarning
                       : network_status == NetworkStatus::kAccessPoint
-                            ? 0x38bdf8
+                            ? kInfo
                             : kMuted),
       0);
   const Snapshot snapshot = model->GetSnapshot(now_ms);
@@ -1557,11 +1609,14 @@ void UiTimer(lv_timer_t *) {
   if (!lv_obj_has_flag(pair_page, LV_OBJ_FLAG_HIDDEN)) {
     const BatteryStatus battery = GetBatteryStatus();
     const int battery_percent = battery.valid ? battery.percent : -1;
-    if (PairingSignature(snapshot) != rendered_pairing_signature ||
-        network_status != rendered_pairing_network_status ||
+    if (network_status != rendered_pairing_network_status ||
         battery_percent != rendered_pairing_battery_percent) {
       BuildPairing(snapshot);
     }
+  }
+  if (!lv_obj_has_flag(dice_page, LV_OBJ_FLAG_HIDDEN) &&
+      PairingSignature(snapshot) != rendered_pairing_signature) {
+    BuildDicePage(snapshot);
   }
   if (!lv_obj_has_flag(history_page, LV_OBJ_FLAG_HIDDEN)) {
     const RollHistory history = model->GetRollHistory(history_pixel_id);
@@ -1631,18 +1686,16 @@ void OrientationTask(void *) {
   }
 }
 
-} // namespace
-
-esp_err_t StartUi(board::Hardware *board_hardware, DiceModel *dice_model) {
-  hardware = board_hardware;
-  model = dice_model;
-  UpdateMetrics();
-
-  if (!lvgl_port_lock(1000)) {
-    return ESP_ERR_TIMEOUT;
-  }
-  board::SetOrientation(hardware, orientation);
+void BuildScreen() {
   root = lv_screen_active();
+  lv_obj_clean(root);
+  power_overlay = nullptr;
+  reset_dialog = nullptr;
+  battery_body = battery_fill = battery_terminal = battery_bolt = nullptr;
+  rendered_battery_percent = -1;
+  rendered_pairing_signature = 0;
+  rendered_history_count = 0;
+  rendered_calculator_revision = 0;
   lv_obj_set_style_bg_color(root, Color(kBackground), 0);
   lv_obj_set_style_border_width(root, 0, 0);
   lv_obj_set_style_pad_all(root, 0, 0);
@@ -1669,10 +1722,10 @@ esp_err_t StartUi(board::Hardware *board_hardware, DiceModel *dice_model) {
   count_label = MakeLabel(header_right, "0/0", &lv_font_montserrat_12, kMuted);
   lv_obj_t *pair_button = lv_button_create(header_right);
   lv_obj_set_size(pair_button, Scale(42), Scale(26));
-  lv_obj_set_style_bg_color(pair_button, Color(0x334155), 0);
+  lv_obj_set_style_bg_color(pair_button, Color(kButton), 0);
   lv_obj_add_event_cb(pair_button, OpenPairing, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *cog = MakeMenuLabel(pair_button, LV_SYMBOL_SETTINGS,
-                                &lv_font_montserrat_14, kText);
+                                &lv_font_montserrat_14, kOnAccent);
   lv_obj_center(cog);
 
   content = lv_obj_create(root);
@@ -1690,24 +1743,29 @@ esp_err_t StartUi(board::Hardware *board_hardware, DiceModel *dice_model) {
                       nullptr);
   lv_obj_add_event_cb(aggregate, AggregatePressTracker, LV_EVENT_ALL, nullptr);
   aggregate_mode =
-      MakeLabel(aggregate, "SUM  >", &lv_font_montserrat_14, 0xbfdbfe);
+      MakeLabel(aggregate, "SUM  >", &lv_font_montserrat_14, kAccentText);
   lv_obj_align(aggregate_mode, LV_ALIGN_TOP_MID, 0, 0);
-  aggregate_value = MakeLabel(aggregate, "-", &lv_font_montserrat_32, kText);
+  aggregate_value = MakeLabel(aggregate, "-", &lv_font_montserrat_32, kOnAccent);
   lv_obj_align(aggregate_value, LV_ALIGN_CENTER, 0, Scale(2));
   aggregate_clear = lv_button_create(aggregate);
   lv_obj_set_size(aggregate_clear, Scale(52), Scale(22));
   lv_obj_align(aggregate_clear, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_obj_set_style_bg_color(aggregate_clear, Color(0x991b1b), 0);
+  lv_obj_set_style_bg_color(aggregate_clear, Color(kDangerBg), 0);
   lv_obj_add_event_cb(aggregate_clear, AggregateCleared, LV_EVENT_CLICKED,
                       nullptr);
   lv_obj_t *clear_label =
-      MakeLabel(aggregate_clear, "CLR", &lv_font_montserrat_12, kText);
+      MakeLabel(aggregate_clear, "CLR", &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(clear_label);
 
   pair_page = lv_obj_create(root);
   lv_obj_set_size(pair_page, lv_pct(100), lv_pct(100));
   lv_obj_set_pos(pair_page, 0, 0);
   lv_obj_add_flag(pair_page, LV_OBJ_FLAG_HIDDEN);
+
+  dice_page = lv_obj_create(root);
+  lv_obj_set_size(dice_page, lv_pct(100), lv_pct(100));
+  lv_obj_set_pos(dice_page, 0, 0);
+  lv_obj_add_flag(dice_page, LV_OBJ_FLAG_HIDDEN);
 
   history_page = lv_obj_create(root);
   lv_obj_set_size(history_page, lv_pct(100), lv_pct(100));
@@ -1730,6 +1788,27 @@ esp_err_t StartUi(board::Hardware *board_hardware, DiceModel *dice_model) {
   lv_obj_add_flag(mode_page, LV_OBJ_FLAG_HIDDEN);
 
   Relayout();
+}
+
+// Tears down and rebuilds every widget so a new theme applies everywhere,
+// then returns to the settings page.
+void RebuildScreen() {
+  BuildScreen();
+  OpenPairing(nullptr);
+}
+
+} // namespace
+
+esp_err_t StartUi(board::Hardware *board_hardware, DiceModel *dice_model) {
+  hardware = board_hardware;
+  model = dice_model;
+  UpdateMetrics();
+
+  if (!lvgl_port_lock(1000)) {
+    return ESP_ERR_TIMEOUT;
+  }
+  board::SetOrientation(hardware, orientation);
+  BuildScreen();
   last_activity_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
   lv_timer_create(UiTimer, 250, nullptr);
   lvgl_port_unlock();

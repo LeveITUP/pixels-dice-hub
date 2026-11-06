@@ -3,7 +3,15 @@
 ## Visual direction
 
 - Portrait canvas: 172 x 320 pixels.
-- Dark background for strong contrast and reduced visual noise.
+- Dark background for strong contrast and reduced visual noise (default
+  `MIDNIGHT` theme).
+- Colour themes: every colour on the device UI is a named role in
+  `main/theme.h` (background, panel, text, accent, danger, success, warning,
+  info, eight tile accents, ...). The `THEME` settings row cycles through
+  `MIDNIGHT`, Catppuccin `MOCHA` and `LATTE` (light), `DRACULA`, `NORD`,
+  `GRUVBOX` and `TOKYO` Night (names kept short for the portrait screen); the choice is saved to NVS and the whole screen is rebuilt
+  on change. Coloured buttons use a dedicated `on_accent` text role so light
+  themes keep legible labels.
 - Dice use distinct accent colors and a compact state-colored ring.
 - The latest value is always the largest text inside a die tile.
 - The portrait aggregate occupies the bottom 66 pixels and is split between
@@ -51,15 +59,20 @@ Each tile can contain:
   battery, charging state, live state, signal strength, Pixel ID,
   firmware/profile metadata, temperatures, and an unpair action.
 - Closing the history view blinks the die again.
-- Tap the header cog to open settings (Wi-Fi, status light, power off with
-  battery percentage, dice pairing, and a `FACTORY RESET` row at the very end
-  of the list that asks for confirmation before erasing NVS and rebooting).
+- Tap the header cog to open settings: a scrollable stack of 34 px button
+  rows styled like `DONE`. `PAIR DICE` (first) opens a dedicated pairing page
+  with the discovered/paired dice list and a `BACK` button; `RESULT / GAME`
+  opens the same result-mode / guided-roll menu as tapping the aggregate.
+  Then `WIFI <state>`, `STATUS LIGHT <mode>`, `THEME <name>`,
+  `AUTO SLEEP <period>`, `POWER OFF - <battery>` (tapping toggles or cycles)
+  and an outlined `FACTORY RESET` row at the end that asks for confirmation
+  before erasing NVS and rebooting.
 - The header shows Wi-Fi as `OFF`, `AP`, `...` while connecting, or `NET`.
 - On boards with `has_battery`, the header also shows a hub battery gauge:
   grey above 25%, amber to 10%, red below, green with a bolt while external power is
   connected (the `OFF` network label is hidden while Wi-Fi is off). The
   settings `POWER OFF` button shows the percentage.
-- Tap the Wi-Fi row on the pairing page to enable or disable networking. The
+- Tap the Wi-Fi row on the settings page to enable or disable networking. The
   touchscreen defaults it off and remembers the selection across reboots.
 - Tap an available die's `ADD` control to register it. Pairing rows retain
   first-seen order and do not rebuild for routine RSSI or state updates.
@@ -108,7 +121,7 @@ orientation before applying the shared rotation logic.
 ## RGB status light
 
 Board profiles may provide an addressable RGB status light. Its mode is
-selected from the pairing/settings page when the selected profile advertises
+selected from the settings page when the selected profile advertises
 that capability.
 
 The Waveshare ESP32-C6-Touch-LCD-1.47 does not contain a programmable RGB LED.

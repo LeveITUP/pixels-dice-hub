@@ -118,7 +118,12 @@ as a fallback. The Wi-Fi form can
 additionally connect the device to an existing network while leaving the access
 point available.
 
-The touchscreen firmware defaults Wi-Fi off. Its settings page (the header cog)
+The touchscreen settings page (the header cog) starts with `PAIR DICE`, which
+opens a separate page listing discovered and paired dice (`ADD` / `REMOVE`),
+and `RESULT / GAME`, a second way into the result-mode and guided-roll menu.
+The system rows follow.
+
+The touchscreen firmware defaults Wi-Fi off. Its settings page
 can enable or disable Wi-Fi, and the saved choice persists across reboots. The
 header shows `OFF`, `AP`, `...`, or `NET` for the current network state. BLE
 scan duty is 100% while Wi-Fi is off and 50% while the radios are shared. The
@@ -130,9 +135,14 @@ while dice are handled, blue while rolling, red for crooked dice, and green
 after every die participating in the current throw has reported a completed
 roll.
 
+The `THEME` row cycles the colour scheme (`MIDNIGHT`, Catppuccin `MOCHA` and
+`LATTE`, `DRACULA`, `NORD`, `GRUVBOX`, `TOKYO` Night). Palettes live in
+`main/theme.cpp`; the selection is persisted and the screen is rebuilt
+immediately.
+
 The last row of the settings list is `FACTORY RESET`. After confirmation it
 erases all persisted state (paired dice, aggregate mode, Wi-Fi credentials and
-enable flag, status light mode) and restarts the hub.
+enable flag, status light mode, theme, auto-sleep period) and restarts the hub.
 
 Roll history intentionally resets on reboot to avoid frequent flash writes.
 Paired Pixel IDs, aggregate mode, the touchscreen Wi-Fi choice, and optional

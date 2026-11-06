@@ -7,6 +7,7 @@
 #include "power.h"
 #include "preferences.h"
 #include "status_led.h"
+#include "theme.h"
 #include "ui.h"
 #include "web_server.h"
 
@@ -31,6 +32,7 @@ extern "C" void app_main() {
 
   ESP_ERROR_CHECK(board::Init(&hardware));
   app::InitPower(&hardware, &model);
+  app::InitTheme();
   ESP_ERROR_CHECK(app::StartStatusLed(&hardware, &model));
   ESP_ERROR_CHECK(app::StartUi(&hardware, &model));
   const bool wifi_enabled = app::RestoreWebNetworkEnabled(false);

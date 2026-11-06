@@ -31,6 +31,7 @@ idf_component_register(
     "power.cpp"
     "preferences.cpp"
     "status_led.cpp"
+    "theme.cpp"
     "ui.cpp"
     "web_server.cpp"
   INCLUDE_DIRS "."
