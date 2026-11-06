@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs.h"
 #include "pixels_ble.h"
 #include "preferences.h"
 #include "web_server.h"
@@ -28,6 +29,36 @@ std::mutex battery_mutex;
 BatteryStatus battery{};
 int filtered_millivolts;
 int critical_samples;
+constexpr uint8_t kIdleSleepOptions[] = {5, 15, 30, 60, 0};
+constexpr uint8_t kDefaultIdleSleepMinutes = 15;
+std::atomic<uint8_t> idle_sleep_minutes{kDefaultIdleSleepMinutes};
+
+void LoadIdleSleep() {
+  nvs_handle_t handle;
+  if (nvs_open("pixels", NVS_READONLY, &handle) != ESP_OK) {
+    return;
+  }
+  uint8_t stored;
+  if (nvs_get_u8(handle, "idle_sleep", &stored) == ESP_OK) {
+    for (uint8_t option : kIdleSleepOptions) {
+      if (option == stored) {
+        idle_sleep_minutes = stored;
+      }
+    }
+  }
+  nvs_close(handle);
+}
+
+void SaveIdleSleep(uint8_t minutes) {
+  nvs_handle_t handle;
+  if (nvs_open("pixels", NVS_READWRITE, &handle) != ESP_OK) {
+    return;
+  }
+  if (nvs_set_u8(handle, "idle_sleep", minutes) == ESP_OK) {
+    nvs_commit(handle);
+  }
+  nvs_close(handle);
+}
 
 void PowerOffTask(void *) {
   // Give the UI a moment to paint the shutdown overlay.
@@ -98,6 +129,7 @@ void InitPower(board::Hardware *hw, DiceModel *dice_model) {
   model = dice_model;
   ESP_LOGI(kTag, "Wake reason: %s",
            board::WakeReasonName(board::GetWakeReason()));
+  LoadIdleSleep();
   battery.supported = IsBatterySupported();
   if (battery.supported &&
       xTaskCreate(BatteryTask, "battery", 3072, nullptr, 2, nullptr) !=
@@ -133,5 +165,40 @@ void RequestPowerOff(const char *reason) {
 bool IsPowerOffPending() { return power_off_pending.load(); }
 
 const char *PowerOffReason() { return power_off_reason; }
+
+uint8_t IdleSleepMinutes() { return idle_sleep_minutes.load(); }
+
+void CycleIdleSleep() {
+  const uint8_t current = idle_sleep_minutes.load();
+  constexpr std::size_t count =
+      sizeof(kIdleSleepOptions) / sizeof(kIdleSleepOptions[0]);
+  std::size_t index = 0;
+  for (std::size_t i = 0; i < count; ++i) {
+    if (kIdleSleepOptions[i] == current) {
+      index = i;
+    }
+  }
+  const uint8_t next = kIdleSleepOptions[(index + 1) % count];
+  idle_sleep_minutes = next;
+  SaveIdleSleep(next);
+  ESP_LOGI(kTag, "Auto sleep set to %s", IdleSleepName());
+}
+
+const char *IdleSleepName() {
+  switch (idle_sleep_minutes.load()) {
+  case 0:
+    return "OFF";
+  case 5:
+    return "5 MIN";
+  case 15:
+    return "15 MIN";
+  case 30:
+    return "30 MIN";
+  case 60:
+    return "1 HOUR";
+  default:
+    return "?";
+  }
+}
 
 } // namespace app

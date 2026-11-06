@@ -63,7 +63,8 @@ names fail configuration rather than silently building for the wrong pinout.
 - Shows only dice handled or rolled within the last 30 minutes while retaining
   all pairings; the empty dashboard reports paired/discovered counts.
 - Battery-friendly power off on the ESP32-S3 AMOLED board: hold the aggregate
-  panel for 2 s, tap `POWER OFF` in settings, or leave the hub idle for 15 min
+  panel for 2 s, tap `POWER OFF` in settings, or leave the hub idle for the
+  `AUTO SLEEP` period chosen in settings (5/15/30 min, 1 h or off; default 15 min; only while running on battery)
   to enter deep sleep; press `BOOT` to wake (motion wake is available behind a
   compile-time flag but off by default). Sleep current
   is roughly 0.3–1 mA.

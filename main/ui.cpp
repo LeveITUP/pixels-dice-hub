@@ -27,7 +27,6 @@ constexpr uint32_t kAccent = 0x2563eb;
 constexpr char kTag[] = "pixels_ui";
 constexpr int kReferencePortraitWidth = 172;
 constexpr uint32_t kPowerOffHoldMs = 2000;
-constexpr uint64_t kIdleSleepMs = 15ULL * 60ULL * 1000ULL;
 constexpr int kReferencePortraitHeight = 320;
 
 struct UiMetrics {
@@ -185,6 +184,13 @@ void WifiToggle(lv_event_t *) {
     return;
   }
   rendered_revision = 0;
+}
+
+void IdleSleepToggle(lv_event_t *) {
+  CycleIdleSleep();
+  const Snapshot snapshot =
+      model->GetSnapshot(static_cast<uint64_t>(esp_timer_get_time() / 1000));
+  BuildPairing(snapshot);
 }
 
 void StatusLedToggle(lv_event_t *) {
@@ -902,6 +908,19 @@ void BuildPairing(const Snapshot &snapshot) {
   }
 
   if (IsPowerOffSupported()) {
+    lv_obj_t *sleep = lv_button_create(pair_page);
+    lv_obj_set_size(sleep, lv_pct(100), Scale(30));
+    lv_obj_set_pos(sleep, 0, list_top - Scale(2));
+    lv_obj_set_style_bg_color(
+        sleep, Color(IdleSleepMinutes() == 0 ? 0x334155 : 0x1d4ed8), 0);
+    lv_obj_add_event_cb(sleep, IdleSleepToggle, LV_EVENT_CLICKED, nullptr);
+    char sleep_text[48];
+    std::snprintf(sleep_text, sizeof(sleep_text),
+                  "AUTO SLEEP %s - TAP TO CHANGE", IdleSleepName());
+    lv_obj_center(
+        MakeMenuLabel(sleep, sleep_text, &lv_font_montserrat_12, kText));
+    list_top += Scale(34);
+
     lv_obj_t *power = lv_button_create(pair_page);
     lv_obj_set_size(power, lv_pct(100), Scale(30));
     lv_obj_set_pos(power, 0, list_top - Scale(2));
@@ -1520,9 +1539,10 @@ void UiTimer(lv_timer_t *) {
   if (model_changed || lv_display_get_inactive_time(nullptr) < 500) {
     last_activity_ms = now_ms;
   } else if (IsPowerOffSupported() && !IsPowerOffPending() &&
-             now_ms - last_activity_ms >= kIdleSleepMs) {
-    ESP_LOGI(kTag, "Idle for %llu min; powering off",
-             static_cast<unsigned long long>(kIdleSleepMs / 60000ULL));
+             IdleSleepMinutes() != 0 && !GetBatteryStatus().usb_power &&
+             now_ms - last_activity_ms >=
+                 static_cast<uint64_t>(IdleSleepMinutes()) * 60000ULL) {
+    ESP_LOGI(kTag, "Idle for %u min; powering off", IdleSleepMinutes());
     BeginPowerOff("Sleeping");
     return;
   }

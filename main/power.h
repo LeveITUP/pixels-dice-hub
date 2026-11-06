@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "dice_model.h"
 #include "esp_err.h"
 
@@ -29,5 +31,11 @@ void RequestPowerOff(const char *reason = "Powering off");
 bool IsPowerOffPending();
 // Short user-facing label for the in-progress power off ("Sleeping", ...).
 const char *PowerOffReason();
+
+// Idle timeout before automatic power off, in minutes; 0 disables it.
+// Persisted in NVS and cycled through 5 / 15 / 30 / 60 / off.
+uint8_t IdleSleepMinutes();
+void CycleIdleSleep();
+const char *IdleSleepName();
 
 } // namespace app

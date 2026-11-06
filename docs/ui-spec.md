@@ -35,7 +35,8 @@ Each tile can contain:
 - On boards with `has_power_off` (ESP32-S3 AMOLED), hold the aggregate panel
   for 2 s or tap `POWER OFF` on the settings page to power off: the screen
   shows `Powering off`, radios stop, the panel and touch controller sleep,
-  and the SoC enters deep sleep. The hub also sleeps after 15 min with no
+  and the SoC enters deep sleep. The hub also sleeps after the `AUTO SLEEP` timeout (settings row cycling
+  5 / 15 / 30 min, 1 hour, off; default 15 min, saved in NVS; suspended while USB power is present) with no
   touch and no dice activity, and shows `Battery empty` before sleeping when
   the cell is critically low on battery power. Press `BOOT`
   to turn it back on; wake is a normal cold boot with the usual clean
