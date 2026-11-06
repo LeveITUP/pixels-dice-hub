@@ -6,6 +6,10 @@
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
 #include "driver/spi_master.h"
+#include "driver/usb_serial_jtag.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_adc/adc_oneshot.h"
 #include "esp_check.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
@@ -36,7 +40,14 @@ constexpr int kDisplayData3Pin = 14;
 constexpr gpio_num_t kBootButtonPin = GPIO_NUM_0;
 constexpr gpio_num_t kImuInt1Pin = GPIO_NUM_9;
 constexpr uint8_t kWakeOnMotionThresholdMg = 150;
+// BAT_ADC: VBAT through a 200k/100k divider into GPIO4 (ADC1_CH3).
+constexpr adc_channel_t kBatteryAdcChannel = ADC_CHANNEL_3;
+constexpr adc_atten_t kBatteryAdcAtten = ADC_ATTEN_DB_6;
+constexpr int kBatteryDividerRatio = 3;
+constexpr int kBatteryAdcSamples = 16;
 uint8_t brightness_percent = 75;
+adc_oneshot_unit_handle_t battery_adc;
+adc_cali_handle_t battery_cali;
 bool imu_available;
 bool touch_available;
 uint32_t last_touch_error_ms;
@@ -68,9 +79,13 @@ const Capabilities kCapabilities = {
     .has_status_led = false,
     .is_amoled = true,
     .has_power_off = true,
+    .has_battery = true,
 };
 
 esp_err_t InitDisplay(Hardware *hardware) {
+  // Release the deep-sleep hold so the panel reset can toggle after a wake.
+  gpio_deep_sleep_hold_dis();
+  gpio_hold_dis(static_cast<gpio_num_t>(kDisplayResetPin));
   spi_bus_config_t bus_config = {};
   bus_config.sclk_io_num = kDisplayClockPin;
   bus_config.data0_io_num = kDisplayData0Pin;
@@ -157,7 +172,7 @@ void ReadTouch(lv_indev_t *, lv_indev_data_t *data) {
 esp_err_t InitLvgl(Hardware *hardware) {
   lvgl_port_cfg_t lvgl_config = ESP_LVGL_PORT_INIT_CONFIG();
   lvgl_config.task_stack = 8192;
-  lvgl_config.task_max_sleep_ms = 100;
+  lvgl_config.task_max_sleep_ms = 20;
   ESP_RETURN_ON_ERROR(lvgl_port_init(&lvgl_config), kTag,
                       "Unable to initialize LVGL");
 
@@ -201,6 +216,34 @@ esp_err_t WriteBrightness(Hardware *hardware, uint8_t percent) {
                                    &value, sizeof(value));
 }
 
+esp_err_t InitBatteryAdc() {
+  adc_oneshot_unit_init_cfg_t unit_config = {};
+  unit_config.unit_id = ADC_UNIT_1;
+  unit_config.ulp_mode = ADC_ULP_MODE_DISABLE;
+  ESP_RETURN_ON_ERROR(adc_oneshot_new_unit(&unit_config, &battery_adc), kTag,
+                      "ADC unit init failed");
+  adc_oneshot_chan_cfg_t channel_config = {};
+  channel_config.atten = kBatteryAdcAtten;
+  channel_config.bitwidth = ADC_BITWIDTH_DEFAULT;
+  ESP_RETURN_ON_ERROR(
+      adc_oneshot_config_channel(battery_adc, kBatteryAdcChannel,
+                                 &channel_config),
+      kTag, "ADC channel config failed");
+  adc_cali_curve_fitting_config_t cali_config = {};
+  cali_config.unit_id = ADC_UNIT_1;
+  cali_config.chan = kBatteryAdcChannel;
+  cali_config.atten = kBatteryAdcAtten;
+  cali_config.bitwidth = ADC_BITWIDTH_DEFAULT;
+  const esp_err_t cali_result =
+      adc_cali_create_scheme_curve_fitting(&cali_config, &battery_cali);
+  if (cali_result != ESP_OK) {
+    ESP_LOGW(kTag, "ADC calibration unavailable (%s); using nominal scale",
+             esp_err_to_name(cali_result));
+    battery_cali = nullptr;
+  }
+  return ESP_OK;
+}
+
 } // namespace
 
 const Capabilities &GetCapabilities() { return kCapabilities; }
@@ -225,6 +268,11 @@ esp_err_t InitHardware(Hardware *hardware) {
              esp_err_to_name(touch_result));
   } else {
     ESP_LOGI(kTag, "FT3168 initialized");
+  }
+  const esp_err_t adc_result = InitBatteryAdc();
+  if (adc_result != ESP_OK) {
+    ESP_LOGW(kTag, "Continuing without battery monitoring: %s",
+             esp_err_to_name(adc_result));
   }
   ESP_RETURN_ON_ERROR(InitLvgl(hardware), kTag, "LVGL init failed");
   return WriteBrightness(hardware, brightness_percent);
@@ -278,9 +326,9 @@ esp_err_t PowerOff(Hardware *hardware) {
     vTaskDelay(pdMS_TO_TICKS(120));
   }
   if (touch_available) {
-    const esp_err_t result = s3_amoled_ft3168_hibernate();
+    const esp_err_t result = s3_amoled_ft3168_sleep();
     if (result != ESP_OK) {
-      ESP_LOGW(kTag, "Touch hibernate failed: %s", esp_err_to_name(result));
+      ESP_LOGW(kTag, "Touch sleep failed: %s", esp_err_to_name(result));
     }
   }
   bool motion_wake = false;
@@ -327,6 +375,31 @@ WakeReason GetWakeReason() {
   default:
     return WakeReason::kOther;
   }
+}
+
+bool ReadBattery(Hardware *, BatteryReading *reading) {
+  if (battery_adc == nullptr) {
+    return false;
+  }
+  int raw_sum = 0;
+  for (int i = 0; i < kBatteryAdcSamples; ++i) {
+    int raw = 0;
+    if (adc_oneshot_read(battery_adc, kBatteryAdcChannel, &raw) != ESP_OK) {
+      return false;
+    }
+    raw_sum += raw;
+  }
+  const int raw = raw_sum / kBatteryAdcSamples;
+  int pin_millivolts = 0;
+  if (battery_cali == nullptr ||
+      adc_cali_raw_to_voltage(battery_cali, raw, &pin_millivolts) != ESP_OK) {
+    // 6 dB attenuation spans roughly 0-1750 mV over 12 bits.
+    pin_millivolts = raw * 1750 / 4095;
+  }
+  reading->millivolts = pin_millivolts * kBatteryDividerRatio;
+  reading->percent = LipoPercentFromMillivolts(reading->millivolts);
+  reading->usb_power = usb_serial_jtag_is_connected();
+  return true;
 }
 
 } // namespace board::profile

@@ -52,12 +52,21 @@ lv_obj_t *aggregate_value;
 lv_obj_t *aggregate_clear;
 lv_obj_t *count_label;
 lv_obj_t *network_status_label;
+lv_obj_t *header_right;
+lv_obj_t *battery_body;
+lv_obj_t *battery_fill;
+lv_obj_t *battery_terminal;
+lv_obj_t *battery_bolt;
+int rendered_battery_percent = -1;
+bool rendered_battery_usb;
+bool rendered_battery_valid;
 lv_obj_t *pair_page;
 lv_obj_t *history_page;
 lv_obj_t *stats_page;
 lv_obj_t *calculator_page;
 lv_obj_t *mode_page;
 lv_obj_t *power_overlay;
+lv_obj_t *reset_dialog;
 uint32_t aggregate_press_started_ms;
 bool aggregate_press_active;
 uint64_t last_activity_ms;
@@ -72,6 +81,7 @@ uint16_t rendered_dashboard_time_signature;
 uint32_t rendered_calculator_revision;
 bool calculator_defaults_initialized;
 NetworkStatus rendered_pairing_network_status = NetworkStatus::kOff;
+int rendered_pairing_battery_percent = -1;
 board::Orientation orientation = board::Orientation::kPortrait;
 
 int Scale(int value) {
@@ -421,7 +431,69 @@ void BeginPowerOff(const char *message) {
     return;
   }
   ShowPowerOffOverlay(message);
-  RequestPowerOff();
+  RequestPowerOff(message);
+}
+
+void CloseResetDialog(lv_event_t *) {
+  if (reset_dialog != nullptr) {
+    lv_obj_delete(reset_dialog);
+    reset_dialog = nullptr;
+  }
+}
+
+void ConfirmFactoryReset(lv_event_t *) {
+  ESP_LOGW(kTag, "Factory reset confirmed from settings");
+  ShowPowerOffOverlay("Resetting...");
+  vTaskDelay(pdMS_TO_TICKS(300));
+  FactoryReset();
+}
+
+void OpenResetDialog(lv_event_t *) {
+  if (reset_dialog != nullptr) {
+    return;
+  }
+  reset_dialog = lv_obj_create(root);
+  lv_obj_set_size(reset_dialog, lv_pct(100), lv_pct(100));
+  lv_obj_set_pos(reset_dialog, 0, 0);
+  lv_obj_set_style_bg_color(reset_dialog, Color(kBackground), 0);
+  lv_obj_set_style_bg_opa(reset_dialog, LV_OPA_90, 0);
+  lv_obj_set_style_border_width(reset_dialog, 0, 0);
+  lv_obj_set_style_radius(reset_dialog, 0, 0);
+  lv_obj_set_style_pad_all(reset_dialog, Scale(12), 0);
+  lv_obj_remove_flag(reset_dialog, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *title =
+      MakeLabel(reset_dialog, "FACTORY RESET?", &lv_font_montserrat_18, kText);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, Scale(30));
+
+  lv_obj_t *body = MakeLabel(reset_dialog,
+                             "Removes all paired dice,\nWi-Fi and settings,\n"
+                             "then restarts the hub.",
+                             &lv_font_montserrat_12, kMuted);
+  lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(body, LV_ALIGN_CENTER, 0, -Scale(10));
+
+  const int button_width = (lv_obj_get_content_width(reset_dialog) - Scale(10)) / 2;
+  lv_obj_t *cancel = lv_button_create(reset_dialog);
+  lv_obj_set_size(cancel, button_width, Scale(40));
+  lv_obj_align(cancel, LV_ALIGN_BOTTOM_LEFT, 0, -Scale(20));
+  lv_obj_set_style_bg_color(cancel, Color(0x334155), 0);
+  lv_obj_add_event_cb(cancel, CloseResetDialog, LV_EVENT_CLICKED, nullptr);
+  lv_obj_center(MakeMenuLabel(cancel, "CANCEL", &lv_font_montserrat_12, kText));
+
+  lv_obj_t *confirm = lv_button_create(reset_dialog);
+  lv_obj_set_size(confirm, button_width, Scale(40));
+  lv_obj_align(confirm, LV_ALIGN_BOTTOM_RIGHT, 0, -Scale(20));
+  lv_obj_set_style_bg_color(confirm, Color(0x991b1b), 0);
+  lv_obj_add_event_cb(confirm, ConfirmFactoryReset, LV_EVENT_CLICKED, nullptr);
+  lv_obj_center(MakeMenuLabel(confirm, "RESET", &lv_font_montserrat_12, kText));
+
+  lv_obj_move_foreground(reset_dialog);
+}
+
+void ManualPowerOff(lv_event_t *) {
+  ESP_LOGI(kTag, "Power off selected from settings");
+  BeginPowerOff("Powering off");
 }
 
 void AggregatePressTracker(lv_event_t *event) {
@@ -451,10 +523,13 @@ void AggregatePressTracker(lv_event_t *event) {
 }
 
 void MakeBatteryIndicator(lv_obj_t *parent, const Die &die, bool stale) {
-  const uint32_t color = stale       ? 0x64748b
+  // Same tiers as the hub gauge; battery_state 1 is the die's own "low" flag.
+  const bool die_low = die.battery_state == 1 || die.battery < 15;
+  const uint32_t color = stale          ? 0x64748b
                          : die.charging ? 0x4ade80
-                         : die.battery < 15 ? 0xf87171
-                                            : kMuted;
+                         : die_low      ? 0xf87171
+                         : die.battery <= 25 ? 0xf59e0b
+                                             : kMuted;
   lv_obj_t *body = lv_obj_create(parent);
   lv_obj_set_size(body, Scale(18), Scale(10));
   lv_obj_align(body, LV_ALIGN_TOP_RIGHT, -Scale(4), 0);
@@ -772,11 +847,12 @@ void BuildPairing(const Snapshot &snapshot) {
   rendered_pairing_signature = PairingSignature(snapshot);
   rendered_pairing_network_status = GetWebNetworkStatus();
   lv_obj_clean(pair_page);
-  lv_obj_set_style_bg_color(pair_page, Color(kBackground), 0);
-  lv_obj_set_style_pad_all(pair_page, metrics.edge, 0);
+  StylePage(pair_page);
 
+  const BatteryStatus battery = GetBatteryStatus();
+  rendered_pairing_battery_percent = battery.valid ? battery.percent : -1;
   lv_obj_t *title =
-      MakeMenuLabel(pair_page, "PAIR DICE", &lv_font_montserrat_14, kText);
+      MakeMenuLabel(pair_page, "SETTINGS", &lv_font_montserrat_14, kText);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, Scale(2), Scale(2));
   lv_obj_t *done = lv_button_create(pair_page);
   lv_obj_set_size(done, Scale(64), Scale(34));
@@ -823,6 +899,26 @@ void BuildPairing(const Snapshot &snapshot) {
                       kText);
     lv_obj_center(status_led_label);
     list_top = Scale(104);
+  }
+
+  if (IsPowerOffSupported()) {
+    lv_obj_t *power = lv_button_create(pair_page);
+    lv_obj_set_size(power, lv_pct(100), Scale(30));
+    lv_obj_set_pos(power, 0, list_top - Scale(2));
+    lv_obj_set_style_bg_color(power, Color(0x991b1b), 0);
+    lv_obj_add_event_cb(power, ManualPowerOff, LV_EVENT_CLICKED, nullptr);
+    char power_text[48];
+    if (battery.supported && battery.valid) {
+      std::snprintf(power_text, sizeof(power_text),
+                    LV_SYMBOL_POWER " POWER OFF  -  %d%%%s", battery.percent,
+                    battery.usb_power ? " USB" : "");
+    } else {
+      std::snprintf(power_text, sizeof(power_text), LV_SYMBOL_POWER " POWER OFF");
+    }
+    lv_obj_t *power_label =
+        MakeMenuLabel(power, power_text, &lv_font_montserrat_12, kText);
+    lv_obj_center(power_label);
+    list_top += Scale(34);
   }
 
   lv_obj_t *list = lv_obj_create(pair_page);
@@ -877,6 +973,15 @@ void BuildPairing(const Snapshot &snapshot) {
   for (std::size_t i = 0; i < snapshot.dice_count; ++i) {
     add_row(snapshot.dice[i], true);
   }
+
+  lv_obj_t *reset = lv_button_create(list);
+  lv_obj_set_size(reset, lv_pct(100), Scale(30));
+  lv_obj_set_style_bg_color(reset, Color(kPanel), 0);
+  lv_obj_set_style_border_width(reset, Scale(1), 0);
+  lv_obj_set_style_border_color(reset, Color(0x991b1b), 0);
+  lv_obj_add_event_cb(reset, OpenResetDialog, LV_EVENT_CLICKED, nullptr);
+  lv_obj_center(MakeMenuLabel(reset, LV_SYMBOL_WARNING " FACTORY RESET",
+                              &lv_font_montserrat_12, 0xf87171));
 }
 
 void OpenPairing(lv_event_t *) {
@@ -1305,8 +1410,89 @@ void Relayout() {
   rendered_revision = 0;
 }
 
+lv_obj_t *MakePlainBox(lv_obj_t *parent) {
+  lv_obj_t *box = lv_obj_create(parent);
+  lv_obj_set_style_border_width(box, 0, 0);
+  lv_obj_set_style_pad_all(box, 0, 0);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE);
+  return box;
+}
+
+void BuildHeaderBattery(lv_obj_t *parent) {
+  battery_bolt = MakeLabel(parent, LV_SYMBOL_CHARGE, &lv_font_montserrat_12,
+                           0x4ade80);
+  lv_obj_add_flag(battery_bolt, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *gauge = MakePlainBox(parent);
+  lv_obj_set_size(gauge, Scale(23), Scale(11));
+  lv_obj_set_style_bg_opa(gauge, LV_OPA_TRANSP, 0);
+
+  battery_body = MakePlainBox(gauge);
+  lv_obj_set_size(battery_body, Scale(20), Scale(11));
+  lv_obj_align(battery_body, LV_ALIGN_LEFT_MID, 0, 0);
+  lv_obj_set_style_bg_opa(battery_body, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(battery_body, Scale(1), 0);
+  lv_obj_set_style_border_color(battery_body, Color(kMuted), 0);
+  lv_obj_set_style_radius(battery_body, Scale(2), 0);
+
+  battery_fill = MakePlainBox(battery_body);
+  lv_obj_set_size(battery_fill, Scale(1), Scale(7));
+  lv_obj_align(battery_fill, LV_ALIGN_LEFT_MID, Scale(1), 0);
+  lv_obj_set_style_bg_color(battery_fill, Color(kMuted), 0);
+  lv_obj_set_style_bg_opa(battery_fill, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_radius(battery_fill, Scale(1), 0);
+
+  battery_terminal = MakePlainBox(gauge);
+  lv_obj_set_size(battery_terminal, Scale(3), Scale(6));
+  lv_obj_align(battery_terminal, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_obj_set_style_bg_color(battery_terminal, Color(kMuted), 0);
+  lv_obj_set_style_radius(battery_terminal, Scale(1), 0);
+}
+
+void UpdateHeaderBattery() {
+  if (battery_body == nullptr) {
+    return;
+  }
+  const BatteryStatus battery = GetBatteryStatus();
+  if (battery.valid == rendered_battery_valid &&
+      battery.percent == rendered_battery_percent &&
+      battery.usb_power == rendered_battery_usb) {
+    return;
+  }
+  rendered_battery_valid = battery.valid;
+  rendered_battery_percent = battery.percent;
+  rendered_battery_usb = battery.usb_power;
+  const uint32_t color = !battery.valid    ? kDimmed
+                         : battery.usb_power ? 0x4ade80
+                         : battery.low       ? 0xf87171
+                         : battery.percent <= 25 ? 0xf59e0b
+                                                 : kMuted;
+  lv_obj_set_style_border_color(battery_body, Color(color), 0);
+  lv_obj_set_style_bg_color(battery_terminal, Color(color), 0);
+  lv_obj_set_style_bg_color(battery_fill, Color(color), 0);
+  const int percent = battery.valid ? std::clamp(battery.percent, 0, 100) : 0;
+  const int fill_width = (Scale(16) * percent + 99) / 100;
+  lv_obj_set_width(battery_fill, std::max(fill_width, Scale(1)));
+  lv_obj_set_style_bg_opa(battery_fill,
+                          percent == 0 ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
+  if (battery.usb_power) {
+    lv_obj_remove_flag(battery_bolt, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(battery_bolt, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 void UiTimer(lv_timer_t *) {
   const uint64_t now_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
+  if (IsPowerOffPending()) {
+    // Power off started outside the UI (e.g. critical battery).
+    if (power_overlay == nullptr) {
+      ShowPowerOffOverlay(PowerOffReason());
+    }
+    return;
+  }
+  UpdateHeaderBattery();
   const NetworkStatus network_status = GetWebNetworkStatus();
   const char *short_status =
       network_status == NetworkStatus::kConnected  ? "NET"
@@ -1314,6 +1500,11 @@ void UiTimer(lv_timer_t *) {
       : network_status == NetworkStatus::kAccessPoint ? "AP"
                                                      : "OFF";
   lv_label_set_text(network_status_label, short_status);
+  if (network_status == NetworkStatus::kOff) {
+    lv_obj_add_flag(network_status_label, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_remove_flag(network_status_label, LV_OBJ_FLAG_HIDDEN);
+  }
   lv_obj_set_style_text_color(
       network_status_label,
       Color(network_status == NetworkStatus::kConnected
@@ -1343,10 +1534,14 @@ void UiTimer(lv_timer_t *) {
     rendered_revision = snapshot.revision;
     rendered_dashboard_time_signature = dashboard_time_signature;
   }
-  if (!lv_obj_has_flag(pair_page, LV_OBJ_FLAG_HIDDEN) &&
-      (PairingSignature(snapshot) != rendered_pairing_signature ||
-       network_status != rendered_pairing_network_status)) {
-    BuildPairing(snapshot);
+  if (!lv_obj_has_flag(pair_page, LV_OBJ_FLAG_HIDDEN)) {
+    const BatteryStatus battery = GetBatteryStatus();
+    const int battery_percent = battery.valid ? battery.percent : -1;
+    if (PairingSignature(snapshot) != rendered_pairing_signature ||
+        network_status != rendered_pairing_network_status ||
+        battery_percent != rendered_pairing_battery_percent) {
+      BuildPairing(snapshot);
+    }
   }
   if (!lv_obj_has_flag(history_page, LV_OBJ_FLAG_HIDDEN)) {
     const RollHistory history = model->GetRollHistory(history_pixel_id);
@@ -1434,19 +1629,31 @@ esp_err_t StartUi(board::Hardware *board_hardware, DiceModel *dice_model) {
 
   lv_obj_t *title = MakeLabel(root, "PIXELS", &lv_font_montserrat_14, kText);
   lv_obj_set_pos(title, Scale(8), Scale(6));
-  count_label = MakeLabel(root, "0", &lv_font_montserrat_12, kMuted);
-  lv_obj_align(count_label, LV_ALIGN_TOP_RIGHT, -Scale(42), Scale(8));
+
+  // Right-hand header cluster: [NET] [bolt][battery] [count] [cog].
+  header_right = MakePlainBox(root);
+  lv_obj_set_size(header_right, LV_SIZE_CONTENT, metrics.header_height);
+  lv_obj_align(header_right, LV_ALIGN_TOP_RIGHT, -Scale(2), 0);
+  lv_obj_set_style_bg_opa(header_right, LV_OPA_TRANSP, 0);
+  lv_obj_set_flex_flow(header_right, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(header_right, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(header_right, Scale(8), 0);
+
   network_status_label =
-      MakeLabel(root, "OFF", &lv_font_montserrat_12, kMuted);
-  lv_obj_align(network_status_label, LV_ALIGN_TOP_MID, Scale(10), Scale(8));
-  lv_obj_t *pair_button = lv_button_create(root);
+      MakeLabel(header_right, "", &lv_font_montserrat_12, kMuted);
+  lv_obj_add_flag(network_status_label, LV_OBJ_FLAG_HIDDEN);
+  if (IsBatterySupported()) {
+    BuildHeaderBattery(header_right);
+  }
+  count_label = MakeLabel(header_right, "0/0", &lv_font_montserrat_12, kMuted);
+  lv_obj_t *pair_button = lv_button_create(header_right);
   lv_obj_set_size(pair_button, Scale(42), Scale(26));
-  lv_obj_align(pair_button, LV_ALIGN_TOP_RIGHT, -Scale(2), 0);
   lv_obj_set_style_bg_color(pair_button, Color(0x334155), 0);
   lv_obj_add_event_cb(pair_button, OpenPairing, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t *plus =
-      MakeMenuLabel(pair_button, "+", &lv_font_montserrat_18, kText);
-  lv_obj_center(plus);
+  lv_obj_t *cog = MakeMenuLabel(pair_button, LV_SYMBOL_SETTINGS,
+                                &lv_font_montserrat_14, kText);
+  lv_obj_center(cog);
 
   content = lv_obj_create(root);
   lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);

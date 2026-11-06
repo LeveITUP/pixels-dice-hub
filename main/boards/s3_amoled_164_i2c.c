@@ -1,6 +1,7 @@
 #include "s3_amoled_164_i2c.h"
 
 #include "driver/i2c.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -88,7 +89,25 @@ bool s3_amoled_qmi8658_read(int16_t *x, int16_t *y, int16_t *z) {
 }
 
 esp_err_t s3_amoled_ft3168_init(void) {
-  return write_register(FT3168_ADDRESS, 0x00, 0x00);
+  // Leave any low-power mode first; TP_RESET is not wired on this board, so
+  // I2C is the only way to bring the controller back.
+  esp_err_t result = write_register(FT3168_ADDRESS, 0xa5, 0x00);
+  if (result != ESP_OK) {
+    return result;
+  }
+  vTaskDelay(pdMS_TO_TICKS(5));
+  result = write_register(FT3168_ADDRESS, 0x00, 0x00);
+  if (result != ESP_OK) {
+    return result;
+  }
+  uint8_t chip_id = 0;
+  uint8_t power_mode = 0xff;
+  if (read_registers(FT3168_ADDRESS, 0xa3, &chip_id, 1) == ESP_OK &&
+      read_registers(FT3168_ADDRESS, 0xa5, &power_mode, 1) == ESP_OK) {
+    ESP_LOGI("s3_amoled_i2c", "FT3168 chip id 0x%02x power mode 0x%02x",
+             chip_id, power_mode);
+  }
+  return ESP_OK;
 }
 
 esp_err_t s3_amoled_ft3168_read(uint16_t *x, uint16_t *y, bool *pressed) {
@@ -124,9 +143,14 @@ esp_err_t s3_amoled_ft3168_read(uint16_t *x, uint16_t *y, bool *pressed) {
   return ESP_OK;
 }
 
-esp_err_t s3_amoled_ft3168_hibernate(void) {
-  // PMODE register: 0x03 = hibernate, only a hardware reset wakes it.
-  return write_register(FT3168_ADDRESS, 0xa5, 0x03);
+esp_err_t s3_amoled_ft3168_sleep(void) {
+  // PMODE 0x03 (hibernate) needs TP_RESET to exit, which is unconnected on
+  // this board, so use monitor mode (0x01) with the slowest scan period.
+  esp_err_t result = write_register(FT3168_ADDRESS, 0x88, 0xff);
+  if (result != ESP_OK) {
+    return result;
+  }
+  return write_register(FT3168_ADDRESS, 0xa5, 0x01);
 }
 
 static esp_err_t qmi8658_ctrl9_command(uint8_t command) {

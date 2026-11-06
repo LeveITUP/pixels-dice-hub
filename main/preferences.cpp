@@ -1,9 +1,18 @@
 #include "preferences.h"
 
+#include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "nvs.h"
+#include "nvs_flash.h"
 
 namespace app {
+
+namespace {
+constexpr char kTag[] = "preferences";
+}
 
 void RestorePreferences(DiceModel *model) {
   if (model == nullptr) {
@@ -48,6 +57,13 @@ bool SavePreferences(const DiceModel &model) {
   }
   nvs_close(handle);
   return result == ESP_OK;
+}
+
+[[noreturn]] void FactoryReset() {
+  ESP_LOGW(kTag, "Factory reset: erasing NVS and restarting");
+  nvs_flash_erase();
+  vTaskDelay(pdMS_TO_TICKS(200));
+  esp_restart();
 }
 
 } // namespace app

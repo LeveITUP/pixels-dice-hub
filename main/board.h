@@ -32,6 +32,15 @@ struct Capabilities {
   bool has_status_led;
   bool is_amoled;
   bool has_power_off;
+  bool has_battery;
+};
+
+struct BatteryReading {
+  int millivolts;
+  // 0-100 estimated from the LiPo open-circuit voltage curve.
+  int percent;
+  // True while a USB host is enumerated (charging or externally powered).
+  bool usb_power;
 };
 
 enum class WakeReason : uint8_t {
@@ -71,5 +80,8 @@ Orientation DetectOrientation(int16_t x, int16_t y,
 esp_err_t PowerOff(Hardware *hardware);
 WakeReason GetWakeReason();
 const char *WakeReasonName(WakeReason reason);
+// Samples the battery; returns false when unsupported or the read failed.
+bool ReadBattery(Hardware *hardware, BatteryReading *reading);
+int LipoPercentFromMillivolts(int millivolts);
 
 } // namespace board

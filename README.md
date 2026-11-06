@@ -63,8 +63,14 @@ names fail configuration rather than silently building for the wrong pinout.
 - Shows only dice handled or rolled within the last 30 minutes while retaining
   all pairings; the empty dashboard reports paired/discovered counts.
 - Battery-friendly power off on the ESP32-S3 AMOLED board: hold the aggregate
-  panel for 2 s (or leave the hub idle for 15 min) to enter deep sleep; press
-  `BOOT` or move the device to wake. Sleep current is roughly 0.3–1 mA.
+  panel for 2 s, tap `POWER OFF` in settings, or leave the hub idle for 15 min
+  to enter deep sleep; press `BOOT` or move the device to wake. Sleep current
+  is roughly 0.3–1 mA.
+- Hub battery gauge on the ESP32-S3 AMOLED board (`BAT_ADC`, GPIO4): a header
+  battery icon with a charge bolt while USB is attached, the percentage on the
+  settings `POWER OFF` button and the web status line, and an automatic clean
+  shutdown when the cell drops below 3.35 V on battery power. Hub and dice
+  indicators share one colour scheme: green charging, amber at 25%, red low.
 
 ## Planning artifacts
 
@@ -110,17 +116,21 @@ as a fallback. The Wi-Fi form can
 additionally connect the device to an existing network while leaving the access
 point available.
 
-The touchscreen firmware defaults Wi-Fi off. Its pairing/settings page can
-enable or disable Wi-Fi, and the saved choice persists across reboots. The
+The touchscreen firmware defaults Wi-Fi off. Its settings page (the header cog)
+can enable or disable Wi-Fi, and the saved choice persists across reboots. The
 header shows `OFF`, `AP`, `...`, or `NET` for the current network state. BLE
 scan duty is 100% while Wi-Fi is off and 50% while the radios are shared. The
 headless firmware keeps Wi-Fi enabled because its web page is the only UI.
 
-On board profiles with a programmable status light, the pairing/settings page
+On board profiles with a programmable status light, the settings page
 can cycle the light between off, solid, and pulse modes. The light is amber
 while dice are handled, blue while rolling, red for crooked dice, and green
 after every die participating in the current throw has reported a completed
 roll.
+
+The last row of the settings list is `FACTORY RESET`. After confirmation it
+erases all persisted state (paired dice, aggregate mode, Wi-Fi credentials and
+enable flag, status light mode) and restarts the hub.
 
 Roll history intentionally resets on reboot to avoid frequent flash writes.
 Paired Pixel IDs, aggregate mode, the touchscreen Wi-Fi choice, and optional
@@ -225,8 +235,11 @@ needed.
   eight-die maximum; see the
   [touchscreen UI audit](docs/touchscreen-ui-audit.md).
 - OTA partitions and firmware updates are not yet implemented.
-- Power off is only available on the ESP32-S3 AMOLED profile; the ESP32-C6 LCD
-  board has no sleep path yet and wake-on-touch is not implemented.
+- Power off and the hub battery gauge are only available on the ESP32-S3
+  AMOLED profile; the ESP32-C6 LCD board has no sleep path yet and
+  wake-on-touch is not implemented. The board exposes no charger status pin,
+  so "charging" is inferred from a USB host connection and the percentage is
+  estimated from cell voltage (it reads ~100% while on USB).
 - Named Pixels animation profiles are not exposed because animation indexes
   depend on the dataset installed on each die.
 

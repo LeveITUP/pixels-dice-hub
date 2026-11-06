@@ -97,4 +97,37 @@ const char *WakeReasonName(WakeReason reason) {
   }
 }
 
+bool ReadBattery(Hardware *hardware, BatteryReading *reading) {
+  if (reading == nullptr || !GetCapabilities().has_battery) {
+    return false;
+  }
+  return profile::ReadBattery(hardware, reading);
+}
+
+int LipoPercentFromMillivolts(int millivolts) {
+  // Approximate single-cell LiPo open-circuit voltage curve.
+  struct Point {
+    int millivolts;
+    int percent;
+  };
+  static constexpr Point kCurve[] = {
+      {3300, 0},  {3450, 3},  {3550, 8},  {3650, 20}, {3720, 35},
+      {3790, 50}, {3870, 65}, {3950, 78}, {4050, 90}, {4150, 98},
+      {4200, 100},
+  };
+  if (millivolts <= kCurve[0].millivolts) {
+    return 0;
+  }
+  for (std::size_t i = 1; i < sizeof(kCurve) / sizeof(kCurve[0]); ++i) {
+    if (millivolts <= kCurve[i].millivolts) {
+      const Point &low = kCurve[i - 1];
+      const Point &high = kCurve[i];
+      return low.percent + (millivolts - low.millivolts) *
+                               (high.percent - low.percent) /
+                               (high.millivolts - low.millivolts);
+    }
+  }
+  return 100;
+}
+
 } // namespace board

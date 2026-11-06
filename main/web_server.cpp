@@ -18,6 +18,7 @@
 #include "freertos/task.h"
 #include "nvs.h"
 #include "pixels_ble.h"
+#include "power.h"
 #include "preferences.h"
 #include "status_led.h"
 
@@ -66,7 +67,8 @@ button:disabled{cursor:not-allowed;opacity:.45}
 .battery{position:relative;display:inline-block;width:22px;height:11px;border:1px solid var(--muted);border-radius:3px;padding:1px}
 .battery::after{content:"";position:absolute;right:-4px;top:2px;width:2px;height:5px;background:var(--muted);border-radius:0 1px 1px 0}
 .battery i{display:block;height:100%;background:var(--muted);border-radius:1px}.battery.low i{background:#f87171}
-.battery.charging i{background:#4ade80}
+.battery.warn i{background:#f59e0b}.battery.charging i{background:#4ade80}
+.hub-low{color:#f87171}.hub-warn{color:#f59e0b}.hub-usb{color:#4ade80}
 .roll{font-size:52px;font-weight:700;text-align:center;line-height:1.25;text-shadow:
 -1px -1px #000,1px -1px #000,-1px 1px #000,1px 1px #000}
 .aggregate-row{display:grid;grid-template-columns:1fr auto;gap:8px}.aggregate{background:var(--accent);display:flex;
@@ -117,13 +119,14 @@ width:min(460px,100%);max-height:85vh;overflow:auto}.modal-head{display:flex;ali
 <button onclick="closeDieHistory()">Close</button></div><div id="die-history"></div>
 <button onclick="loadDieHistory()" style="width:100%;margin-top:8px">Refresh</button></div></div>
 <script>
+function batteryClass(p,low,charging){return charging?'charging':(low||p<15)?'low':p<=25?'warn':''}
 const colors=['#8b5cf6','#38bdf8','#f59e0b','#22c55e','#ec4899','#06b6d4','#f97316','#84cc16'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function action(op,id){await fetch('/api/action?op='+op+(id?'&id='+id:''),{method:'POST'});refresh()}
 function blink(id){if(id)fetch('/api/action?op=blink&id='+id,{method:'POST'})}
 function inspect(id){if(id)fetch('/api/action?op=info&id='+id,{method:'POST'})}
 function dieCard(d,i){const stateClass=d.state.toLowerCase().replaceAll(' ','-');return `<article class="card die ${stateClass} ${d.offline?'offline':''}" style="--die:${colors[i%colors.length]}" onclick="showDieHistory('${d.id}')">
-<div class="die-head"><b>${esc(d.type)}</b><span class="battery ${d.battery<15?'low':''} ${d.charging?'charging':''}" title="${d.battery}%"><i style="width:${Math.max(0,Math.min(100,d.battery))}%"></i></span></div>
+<div class="die-head"><b>${esc(d.type)}</b><span class="battery ${batteryClass(d.battery,d.batteryState==='low',d.charging)}" title="${d.battery}%"><i style="width:${Math.max(0,Math.min(100,d.battery))}%"></i></span></div>
 <div class="roll">${d.hasRoll?d.roll:'-'}</div><div class="die-head"><span class="muted">${esc(d.name||('Pixel '+d.id))}</span>
 <span class="die-state">${d.offline?'OFFLINE':esc(d.state)}</span></div></article>`}
 let refreshTimer,refreshing=false,currentDice=[],selectedDieId='',eventsConnected=false;
@@ -159,7 +162,8 @@ const start=document.querySelector('#calc-start');start.disabled=rolling;
 start.textContent=rolling?'Rolling…':(c.status==='COMPLETE'?'Roll again':'Start round')}
 async function refresh(){if(refreshing)return;refreshing=true;try{const r=await fetch('/api/state',{cache:'no-store'});const s=await r.json();
 currentDice=s.dice;updateDieStatus();const active=s.dice.filter(d=>d.active);
-document.querySelector('#status').textContent=`${active.length} active · ${s.dice.length} paired · ${s.candidates.length} found`;
+const b=s.battery;const hub=b&&b.supported&&b.valid?` · <span class="hub-${b.usbPower?'usb':b.low?'low':b.percent<=25?'warn':'ok'}">hub ${b.percent}%${b.usbPower?' ⚡':''}</span>`:'';
+document.querySelector('#status').innerHTML=`${active.length} active · ${s.dice.length} paired · ${s.candidates.length} found${hub}`;
 document.querySelector('#dice').innerHTML=active.length?active.map(dieCard).join(''):`<div class="card empty">No active dice<br><small>${s.dice.length} paired · ${s.candidates.length} found</small><br>Handle a die or pair one below</div>`;
 document.querySelector('#mode').textContent=s.aggregate.mode+' ›';document.querySelector('#total').textContent=s.aggregate.hasValue?s.aggregate.value:'-';
 document.querySelector('#roll-count').textContent=s.aggregate.rollCount+' roll'+(s.aggregate.rollCount===1?'':'s');
@@ -362,10 +366,20 @@ esp_err_t StateHandler(httpd_req_t *request) {
   SendCalculator(request, snapshot.calculator);
   std::snprintf(buffer, sizeof(buffer),
                 ",\"statusLed\":{\"supported\":%s,\"mode\":\"%s\","
-                "\"state\":\"%s\"},\"history\":[",
+                "\"state\":\"%s\"}",
                 StatusLedSupported() ? "true" : "false",
                 StatusLedModeName(GetStatusLedMode()),
                 StatusLedStateName(GetStatusLedState()));
+  httpd_resp_sendstr_chunk(request, buffer);
+  const BatteryStatus battery = GetBatteryStatus();
+  std::snprintf(buffer, sizeof(buffer),
+                ",\"battery\":{\"supported\":%s,\"valid\":%s,"
+                "\"percent\":%d,\"millivolts\":%d,\"usbPower\":%s,"
+                "\"low\":%s},\"history\":[",
+                battery.supported ? "true" : "false",
+                battery.valid ? "true" : "false", battery.percent,
+                battery.millivolts, battery.usb_power ? "true" : "false",
+                battery.low ? "true" : "false");
   httpd_resp_sendstr_chunk(request, buffer);
   for (std::size_t i = 0; i < snapshot.history_count; ++i) {
     const RollEvent &event = snapshot.history[i];

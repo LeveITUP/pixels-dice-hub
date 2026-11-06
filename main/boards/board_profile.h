@@ -12,5 +12,6 @@ bool ReadAcceleration(Hardware *hardware, int16_t *x, int16_t *y, int16_t *z);
 void SetOrientation(Hardware *hardware, Orientation orientation);
 esp_err_t PowerOff(Hardware *hardware);
 WakeReason GetWakeReason();
+bool ReadBattery(Hardware *hardware, BatteryReading *reading);
 
 } // namespace board::profile

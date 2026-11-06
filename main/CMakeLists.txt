@@ -37,6 +37,8 @@ idf_component_register(
   REQUIRES
     bt
     driver
+    esp_adc
+    esp_driver_usb_serial_jtag
     esp_lcd
     ${PIXELS_BOARD_REQUIRES}
     esp_event

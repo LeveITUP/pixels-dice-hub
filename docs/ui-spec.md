@@ -33,9 +33,11 @@ Each tile can contain:
 
 - Tap the aggregate panel to cycle `SUM`, `HIGH`, and `LOW`.
 - On boards with `has_power_off` (ESP32-S3 AMOLED), hold the aggregate panel
-  for 2 s to power off: the screen shows `Powering off`, radios stop, the
-  panel and touch controller sleep, and the SoC enters deep sleep. The hub
-  also sleeps after 15 min with no touch and no dice activity. Press `BOOT`
+  for 2 s or tap `POWER OFF` on the settings page to power off: the screen
+  shows `Powering off`, radios stop, the panel and touch controller sleep,
+  and the SoC enters deep sleep. The hub also sleeps after 15 min with no
+  touch and no dice activity, and shows `Battery empty` before sleeping when
+  the cell is critically low on battery power. Press `BOOT`
   or pick the device up (IMU wake-on-motion) to turn it back on; wake is a
   normal cold boot with the usual clean dashboard.
 - Tap the separate `CLEAR` control to begin a new aggregate round.
@@ -46,8 +48,14 @@ Each tile can contain:
   battery, charging state, live state, signal strength, Pixel ID,
   firmware/profile metadata, temperatures, and an unpair action.
 - Closing the history view blinks the die again.
-- Tap the header pairing icon to open registration.
+- Tap the header cog to open settings (Wi-Fi, status light, power off with
+  battery percentage, dice pairing, and a `FACTORY RESET` row at the very end
+  of the list that asks for confirmation before erasing NVS and rebooting).
 - The header shows Wi-Fi as `OFF`, `AP`, `...` while connecting, or `NET`.
+- On boards with `has_battery`, the header also shows a hub battery gauge:
+  grey above 25%, amber to 10%, red below, green with a bolt while USB is
+  connected (the `OFF` network label is hidden while Wi-Fi is off). The
+  settings `POWER OFF` button shows the percentage.
 - Tap the Wi-Fi row on the pairing page to enable or disable networking. The
   touchscreen defaults it off and remembers the selection across reboots.
 - Tap an available die's `ADD` control to register it. Pairing rows retain
@@ -71,7 +79,8 @@ The dashboard includes newly paired dice immediately and keeps dice visible for
 hidden after startup until each die is handled or rolled. Pairing is retained
 when a tile disappears. The empty dashboard shows active/paired discovery
 counts and prompts the player to handle a die or open pairing.
-| Battery under 15% | Red battery fill |
+| Battery 25% or lower | Amber battery fill |
+| Battery under 15% or die reports low | Red battery fill |
 | Charging | Green battery fill |
 | No completed roll | Em dash as value |
 
