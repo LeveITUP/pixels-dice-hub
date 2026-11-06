@@ -40,6 +40,9 @@ constexpr int kDisplayData3Pin = 14;
 constexpr gpio_num_t kBootButtonPin = GPIO_NUM_0;
 constexpr gpio_num_t kImuInt1Pin = GPIO_NUM_9;
 constexpr uint8_t kWakeOnMotionThresholdMg = 150;
+// Motion wake is off by default: a knocked table or bag transport would wake
+// the hub and drain the cell. BOOT is the only wake source when disabled.
+constexpr bool kWakeOnMotion = false;
 // BAT_ADC: VBAT through a 200k/100k divider into GPIO4 (ADC1_CH3).
 constexpr adc_channel_t kBatteryAdcChannel = ADC_CHANNEL_3;
 constexpr adc_atten_t kBatteryAdcAtten = ADC_ATTEN_DB_6;
@@ -332,12 +335,17 @@ esp_err_t PowerOff(Hardware *hardware) {
     }
   }
   bool motion_wake = false;
-  if (imu_available) {
+  if (imu_available && kWakeOnMotion) {
     const esp_err_t result =
         s3_amoled_qmi8658_enable_wake_on_motion(kWakeOnMotionThresholdMg);
     motion_wake = result == ESP_OK;
     if (!motion_wake) {
       ESP_LOGW(kTag, "IMU wake-on-motion failed: %s", esp_err_to_name(result));
+    }
+  } else if (imu_available) {
+    const esp_err_t result = s3_amoled_qmi8658_disable();
+    if (result != ESP_OK) {
+      ESP_LOGW(kTag, "IMU disable failed: %s", esp_err_to_name(result));
     }
   }
 

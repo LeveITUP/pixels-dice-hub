@@ -64,7 +64,8 @@ names fail configuration rather than silently building for the wrong pinout.
   all pairings; the empty dashboard reports paired/discovered counts.
 - Battery-friendly power off on the ESP32-S3 AMOLED board: hold the aggregate
   panel for 2 s, tap `POWER OFF` in settings, or leave the hub idle for 15 min
-  to enter deep sleep; press `BOOT` or move the device to wake. Sleep current
+  to enter deep sleep; press `BOOT` to wake (motion wake is available behind a
+  compile-time flag but off by default). Sleep current
   is roughly 0.3–1 mA.
 - Hub battery gauge on the ESP32-S3 AMOLED board (`BAT_ADC`, GPIO4): a header
   battery icon with a charge bolt while USB is attached, the percentage on the

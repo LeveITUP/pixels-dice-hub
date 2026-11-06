@@ -21,6 +21,9 @@ esp_err_t s3_amoled_ft3168_sleep(void);
 // when acceleration exceeds threshold_mg.
 esp_err_t s3_amoled_qmi8658_enable_wake_on_motion(uint8_t threshold_mg);
 
+// Disables accel/gyro so the IMU draws standby current during deep sleep.
+esp_err_t s3_amoled_qmi8658_disable(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -38,8 +38,10 @@ Each tile can contain:
   and the SoC enters deep sleep. The hub also sleeps after 15 min with no
   touch and no dice activity, and shows `Battery empty` before sleeping when
   the cell is critically low on battery power. Press `BOOT`
-  or pick the device up (IMU wake-on-motion) to turn it back on; wake is a
-  normal cold boot with the usual clean dashboard.
+  to turn it back on; wake is a normal cold boot with the usual clean
+  dashboard. IMU wake-on-motion is implemented but compiled out
+  (`kWakeOnMotion` in `s3_amoled_164.cpp`) so transport bumps cannot drain
+  the cell.
 - Tap the separate `CLEAR` control to begin a new aggregate round.
 - Clearing a round does not erase the last-20-roll history.
 - Tap a die tile to identify it with a short blink and open its newest-first

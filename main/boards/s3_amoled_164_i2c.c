@@ -172,6 +172,11 @@ static esp_err_t qmi8658_ctrl9_command(uint8_t command) {
   return result;
 }
 
+esp_err_t s3_amoled_qmi8658_disable(void) {
+  // CTRL7: all sensors off.
+  return write_register(QMI8658_ADDRESS, 0x08, 0x00);
+}
+
 esp_err_t s3_amoled_qmi8658_enable_wake_on_motion(uint8_t threshold_mg) {
   // Disable sensors while reconfiguring.
   esp_err_t result = write_register(QMI8658_ADDRESS, 0x08, 0x00);
