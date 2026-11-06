@@ -17,7 +17,9 @@ struct BatteryStatus {
   bool valid;
   int percent;
   int millivolts;
-  bool usb_power;
+  // True on a USB host (SOF detected) or whenever the charger is holding
+  // VBAT at its float level, which also covers wall chargers.
+  bool external_power;
   bool low;
 };
 

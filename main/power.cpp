@@ -21,6 +21,12 @@ constexpr int kLowBatteryPercent = 10;
 // Below this the ETA6098 protection is close; shut down cleanly first.
 constexpr int kCriticalBatteryMillivolts = 3350;
 constexpr int kCriticalSamplesRequired = 5;
+// The ETA6098 floats VBAT between its ~4.1 V recharge threshold and 4.2 V
+// while external power is present; a loaded cell off-charger sags below
+// that within minutes. Hysteresis avoids flapping around the threshold.
+constexpr int kChargerPresentMillivolts = 4100;
+constexpr int kChargerAbsentMillivolts = 4040;
+constexpr int kChargerSamplesRequired = 3;
 board::Hardware *hardware;
 DiceModel *model;
 std::atomic_bool power_off_pending{false};
@@ -29,6 +35,8 @@ std::mutex battery_mutex;
 BatteryStatus battery{};
 int filtered_millivolts;
 int critical_samples;
+int charger_samples;
+bool charger_by_voltage;
 constexpr uint8_t kIdleSleepOptions[] = {5, 15, 30, 60, 0};
 constexpr uint8_t kDefaultIdleSleepMinutes = 15;
 std::atomic<uint8_t> idle_sleep_minutes{kDefaultIdleSleepMinutes};
@@ -93,20 +101,32 @@ void BatteryTask(void *) {
       }
       const int percent =
           board::LipoPercentFromMillivolts(filtered_millivolts);
+      if (filtered_millivolts >= kChargerPresentMillivolts) {
+        if (++charger_samples >= kChargerSamplesRequired) {
+          charger_by_voltage = true;
+        }
+      } else {
+        charger_samples = 0;
+        if (filtered_millivolts < kChargerAbsentMillivolts) {
+          charger_by_voltage = false;
+        }
+      }
+      const bool external_power = reading.usb_power || charger_by_voltage;
       {
         std::lock_guard<std::mutex> lock(battery_mutex);
         battery.valid = true;
         battery.millivolts = filtered_millivolts;
         battery.percent = percent;
-        battery.usb_power = reading.usb_power;
-        battery.low = percent <= kLowBatteryPercent && !reading.usb_power;
+        battery.external_power = external_power;
+        battery.low = percent <= kLowBatteryPercent && !external_power;
       }
       if (!logged) {
-        ESP_LOGI(kTag, "Battery %d mV (%d%%)%s", filtered_millivolts, percent,
-                 reading.usb_power ? ", USB connected" : "");
+        ESP_LOGI(kTag, "Battery %d mV (%d%%)%s%s", filtered_millivolts,
+                 percent, reading.usb_power ? ", USB host" : "",
+                 charger_by_voltage ? ", charger" : "");
         logged = true;
       }
-      if (!reading.usb_power &&
+      if (!external_power &&
           filtered_millivolts < kCriticalBatteryMillivolts) {
         if (++critical_samples >= kCriticalSamplesRequired &&
             IsPowerOffSupported()) {

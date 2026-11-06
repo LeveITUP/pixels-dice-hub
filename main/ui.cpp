@@ -930,7 +930,7 @@ void BuildPairing(const Snapshot &snapshot) {
     if (battery.supported && battery.valid) {
       std::snprintf(power_text, sizeof(power_text),
                     LV_SYMBOL_POWER " POWER OFF  -  %d%%%s", battery.percent,
-                    battery.usb_power ? " USB" : "");
+                    battery.external_power ? " PLUGGED IN" : "");
     } else {
       std::snprintf(power_text, sizeof(power_text), LV_SYMBOL_POWER " POWER OFF");
     }
@@ -1476,14 +1476,14 @@ void UpdateHeaderBattery() {
   const BatteryStatus battery = GetBatteryStatus();
   if (battery.valid == rendered_battery_valid &&
       battery.percent == rendered_battery_percent &&
-      battery.usb_power == rendered_battery_usb) {
+      battery.external_power == rendered_battery_usb) {
     return;
   }
   rendered_battery_valid = battery.valid;
   rendered_battery_percent = battery.percent;
-  rendered_battery_usb = battery.usb_power;
+  rendered_battery_usb = battery.external_power;
   const uint32_t color = !battery.valid    ? kDimmed
-                         : battery.usb_power ? 0x4ade80
+                         : battery.external_power ? 0x4ade80
                          : battery.low       ? 0xf87171
                          : battery.percent <= 25 ? 0xf59e0b
                                                  : kMuted;
@@ -1495,7 +1495,7 @@ void UpdateHeaderBattery() {
   lv_obj_set_width(battery_fill, std::max(fill_width, Scale(1)));
   lv_obj_set_style_bg_opa(battery_fill,
                           percent == 0 ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
-  if (battery.usb_power) {
+  if (battery.external_power) {
     lv_obj_remove_flag(battery_bolt, LV_OBJ_FLAG_HIDDEN);
   } else {
     lv_obj_add_flag(battery_bolt, LV_OBJ_FLAG_HIDDEN);
@@ -1539,7 +1539,7 @@ void UiTimer(lv_timer_t *) {
   if (model_changed || lv_display_get_inactive_time(nullptr) < 500) {
     last_activity_ms = now_ms;
   } else if (IsPowerOffSupported() && !IsPowerOffPending() &&
-             IdleSleepMinutes() != 0 && !GetBatteryStatus().usb_power &&
+             IdleSleepMinutes() != 0 && !GetBatteryStatus().external_power &&
              now_ms - last_activity_ms >=
                  static_cast<uint64_t>(IdleSleepMinutes()) * 60000ULL) {
     ESP_LOGI(kTag, "Idle for %u min; powering off", IdleSleepMinutes());

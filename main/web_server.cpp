@@ -162,7 +162,7 @@ const start=document.querySelector('#calc-start');start.disabled=rolling;
 start.textContent=rolling?'Rolling…':(c.status==='COMPLETE'?'Roll again':'Start round')}
 async function refresh(){if(refreshing)return;refreshing=true;try{const r=await fetch('/api/state',{cache:'no-store'});const s=await r.json();
 currentDice=s.dice;updateDieStatus();const active=s.dice.filter(d=>d.active);
-const b=s.battery;const hub=b&&b.supported&&b.valid?` · <span class="hub-${b.usbPower?'usb':b.low?'low':b.percent<=25?'warn':'ok'}">hub ${b.percent}%${b.usbPower?' ⚡':''}</span>`:'';
+const b=s.battery;const hub=b&&b.supported&&b.valid?` · <span class="hub-${b.externalPower?'usb':b.low?'low':b.percent<=25?'warn':'ok'}">hub ${b.percent}%${b.externalPower?' ⚡':''}</span>`:'';
 document.querySelector('#status').innerHTML=`${active.length} active · ${s.dice.length} paired · ${s.candidates.length} found${hub}`;
 document.querySelector('#dice').innerHTML=active.length?active.map(dieCard).join(''):`<div class="card empty">No active dice<br><small>${s.dice.length} paired · ${s.candidates.length} found</small><br>Handle a die or pair one below</div>`;
 document.querySelector('#mode').textContent=s.aggregate.mode+' ›';document.querySelector('#total').textContent=s.aggregate.hasValue?s.aggregate.value:'-';
@@ -374,11 +374,11 @@ esp_err_t StateHandler(httpd_req_t *request) {
   const BatteryStatus battery = GetBatteryStatus();
   std::snprintf(buffer, sizeof(buffer),
                 ",\"battery\":{\"supported\":%s,\"valid\":%s,"
-                "\"percent\":%d,\"millivolts\":%d,\"usbPower\":%s,"
+                "\"percent\":%d,\"millivolts\":%d,\"externalPower\":%s,"
                 "\"low\":%s},\"history\":[",
                 battery.supported ? "true" : "false",
                 battery.valid ? "true" : "false", battery.percent,
-                battery.millivolts, battery.usb_power ? "true" : "false",
+                battery.millivolts, battery.external_power ? "true" : "false",
                 battery.low ? "true" : "false");
   httpd_resp_sendstr_chunk(request, buffer);
   for (std::size_t i = 0; i < snapshot.history_count; ++i) {
