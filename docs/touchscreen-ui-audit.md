@@ -1,5 +1,9 @@
 # Touchscreen UI audit
 
+> Historical snapshot of the first touchscreen layout review. The settings
+> page has since been split into a scrollable settings list and a separate
+> PAIR DICE page with 34 px rows; see `ui-spec.md` for the current layout.
+
 These mockups use the display's native pixel dimensions. Geometry follows the
 current LVGL implementation; desktop font rasterization is only an
 approximation of LVGL's bundled Montserrat fonts.

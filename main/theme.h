@@ -33,8 +33,6 @@ constexpr std::size_t kThemeCount = 7;
 
 void InitTheme();
 const Theme &CurrentTheme();
-std::size_t CurrentThemeIndex();
-const Theme &ThemeAt(std::size_t index);
 void SetTheme(std::size_t index);
 void CycleTheme();
 

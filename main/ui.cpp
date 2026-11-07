@@ -11,9 +11,9 @@
 #include "lvgl.h"
 #include "pixels_ble.h"
 #include "power.h"
-#include "theme.h"
 #include "preferences.h"
 #include "status_led.h"
+#include "theme.h"
 #include "web_server.h"
 
 namespace app {
@@ -74,7 +74,7 @@ lv_obj_t *battery_bolt;
 int rendered_battery_percent = -1;
 bool rendered_battery_usb;
 bool rendered_battery_valid;
-lv_obj_t *pair_page;
+lv_obj_t *settings_page;
 lv_obj_t *dice_page;
 lv_obj_t *history_page;
 lv_obj_t *stats_page;
@@ -90,13 +90,13 @@ uint32_t history_pixel_id;
 std::size_t rendered_history_count;
 uint64_t rendered_history_timestamp;
 uint32_t rendered_revision;
-uint64_t pair_page_opened_ms;
+uint64_t settings_opened_ms;
 uint64_t rendered_pairing_signature;
 uint16_t rendered_dashboard_time_signature;
 uint32_t rendered_calculator_revision;
 bool calculator_defaults_initialized;
-NetworkStatus rendered_pairing_network_status = NetworkStatus::kOff;
-int rendered_pairing_battery_percent = -1;
+NetworkStatus rendered_settings_network_status = NetworkStatus::kOff;
+int rendered_settings_battery_percent = -1;
 board::Orientation orientation = board::Orientation::kPortrait;
 
 int Scale(int value) {
@@ -126,7 +126,7 @@ void UpdateMetrics() {
 }
 
 void OpenStats(lv_event_t *event);
-void BuildPairing(const Snapshot &snapshot);
+void BuildSettings();
 void BuildCalculator();
 void OpenCalculator(lv_event_t *event);
 
@@ -204,9 +204,7 @@ void WifiToggle(lv_event_t *) {
 
 void IdleSleepToggle(lv_event_t *) {
   CycleIdleSleep();
-  const Snapshot snapshot =
-      model->GetSnapshot(static_cast<uint64_t>(esp_timer_get_time() / 1000));
-  BuildPairing(snapshot);
+  BuildSettings();
 }
 
 void RebuildScreen();
@@ -222,9 +220,7 @@ void StatusLedToggle(lv_event_t *) {
   if (!CycleStatusLedMode()) {
     return;
   }
-  const Snapshot snapshot =
-      model->GetSnapshot(static_cast<uint64_t>(esp_timer_get_time() / 1000));
-  BuildPairing(snapshot);
+  BuildSettings();
 }
 
 void CloseCalculator(lv_event_t *) {
@@ -284,13 +280,13 @@ void CloseDicePage(lv_event_t *) {
   lv_obj_add_flag(dice_page, LV_OBJ_FLAG_HIDDEN);
 }
 
-void ClosePairing(lv_event_t *) {
+void CloseSettings(lv_event_t *) {
   const uint64_t now_ms =
       static_cast<uint64_t>(esp_timer_get_time() / 1000);
-  if (now_ms - pair_page_opened_ms < 300) {
+  if (now_ms - settings_opened_ms < 300) {
     return;
   }
-  lv_obj_add_flag(pair_page, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(settings_page, LV_OBJ_FLAG_HIDDEN);
 }
 
 void PairAction(lv_event_t *event) {
@@ -879,29 +875,28 @@ uint16_t DashboardTimeSignature(const Snapshot &snapshot, uint64_t now_ms) {
   return signature;
 }
 
-void BuildPairing(const Snapshot &snapshot) {
-  (void)snapshot;
-  rendered_pairing_network_status = GetWebNetworkStatus();
-  lv_obj_clean(pair_page);
-  StylePage(pair_page);
-  lv_obj_add_flag(pair_page, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_scroll_dir(pair_page, LV_DIR_VER);
+void BuildSettings() {
+  rendered_settings_network_status = GetWebNetworkStatus();
+  lv_obj_clean(settings_page);
+  StylePage(settings_page);
+  lv_obj_add_flag(settings_page, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(settings_page, LV_DIR_VER);
 
   const BatteryStatus battery = GetBatteryStatus();
-  rendered_pairing_battery_percent = battery.valid ? battery.percent : -1;
+  rendered_settings_battery_percent = battery.valid ? battery.percent : -1;
   lv_obj_t *title =
-      MakeMenuLabel(pair_page, "SETTINGS", &lv_font_montserrat_14, kText);
+      MakeMenuLabel(settings_page, "SETTINGS", &lv_font_montserrat_14, kText);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, Scale(2), Scale(2));
-  lv_obj_t *done = lv_button_create(pair_page);
+  lv_obj_t *done = lv_button_create(settings_page);
   lv_obj_set_size(done, Scale(64), Scale(34));
   lv_obj_align(done, LV_ALIGN_TOP_RIGHT, 0, -Scale(2));
   lv_obj_set_style_bg_color(done, Color(kAccent), 0);
-  lv_obj_add_event_cb(done, ClosePairing, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(done, CloseSettings, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *done_label =
       MakeMenuLabel(done, "DONE", &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(done_label);
 
-  const NetworkStatus network_status = rendered_pairing_network_status;
+  const NetworkStatus network_status = rendered_settings_network_status;
   const bool network_enabled = network_status != NetworkStatus::kOff;
   // Settings rows share the DONE button's proportions: 34 px tall with a
   // 6 px gap so they read as buttons rather than list entries.
@@ -910,7 +905,7 @@ void BuildPairing(const Snapshot &snapshot) {
   int list_top = Scale(38);
   auto add_setting = [&](uint32_t background, lv_event_cb_t handler,
                      const char *text) {
-    lv_obj_t *row = lv_button_create(pair_page);
+    lv_obj_t *row = lv_button_create(settings_page);
     lv_obj_set_size(row, lv_pct(100), Scale(kRowHeight));
     lv_obj_set_pos(row, 0, list_top);
     lv_obj_set_style_bg_color(row, Color(background), 0);
@@ -1055,14 +1050,11 @@ void OpenModePageFromSettings(lv_event_t *) {
   lv_obj_move_foreground(mode_page);
 }
 
-void OpenPairing(lv_event_t *) {
-  const uint64_t now_ms =
-      static_cast<uint64_t>(esp_timer_get_time() / 1000);
-  const Snapshot snapshot = model->GetSnapshot(now_ms);
-  BuildPairing(snapshot);
-  pair_page_opened_ms = now_ms;
-  lv_obj_remove_flag(pair_page, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_move_foreground(pair_page);
+void OpenSettings(lv_event_t *) {
+  BuildSettings();
+  settings_opened_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
+  lv_obj_remove_flag(settings_page, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(settings_page);
 }
 
 void AddCalculatorControl(lv_obj_t *parent, int y, const char *label,
@@ -1364,7 +1356,7 @@ void BuildDashboard(const Snapshot &snapshot, uint64_t now_ms) {
     lv_obj_set_size(empty, tile_width, tile_height);
     StyleCard(empty, kButton);
     lv_obj_add_flag(empty, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(empty, OpenPairing, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_event_cb(empty, OpenSettings, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *title =
         MakeLabel(empty, "NO ACTIVE DICE", &lv_font_montserrat_18, kText);
     lv_obj_align(title, LV_ALIGN_CENTER, 0, -Scale(32));
@@ -1606,12 +1598,12 @@ void UiTimer(lv_timer_t *) {
     rendered_revision = snapshot.revision;
     rendered_dashboard_time_signature = dashboard_time_signature;
   }
-  if (!lv_obj_has_flag(pair_page, LV_OBJ_FLAG_HIDDEN)) {
+  if (!lv_obj_has_flag(settings_page, LV_OBJ_FLAG_HIDDEN)) {
     const BatteryStatus battery = GetBatteryStatus();
     const int battery_percent = battery.valid ? battery.percent : -1;
-    if (network_status != rendered_pairing_network_status ||
-        battery_percent != rendered_pairing_battery_percent) {
-      BuildPairing(snapshot);
+    if (network_status != rendered_settings_network_status ||
+        battery_percent != rendered_settings_battery_percent) {
+      BuildSettings();
     }
   }
   if (!lv_obj_has_flag(dice_page, LV_OBJ_FLAG_HIDDEN) &&
@@ -1723,7 +1715,7 @@ void BuildScreen() {
   lv_obj_t *pair_button = lv_button_create(header_right);
   lv_obj_set_size(pair_button, Scale(42), Scale(26));
   lv_obj_set_style_bg_color(pair_button, Color(kButton), 0);
-  lv_obj_add_event_cb(pair_button, OpenPairing, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(pair_button, OpenSettings, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *cog = MakeMenuLabel(pair_button, LV_SYMBOL_SETTINGS,
                                 &lv_font_montserrat_14, kOnAccent);
   lv_obj_center(cog);
@@ -1757,10 +1749,10 @@ void BuildScreen() {
       MakeLabel(aggregate_clear, "CLR", &lv_font_montserrat_12, kOnAccent);
   lv_obj_center(clear_label);
 
-  pair_page = lv_obj_create(root);
-  lv_obj_set_size(pair_page, lv_pct(100), lv_pct(100));
-  lv_obj_set_pos(pair_page, 0, 0);
-  lv_obj_add_flag(pair_page, LV_OBJ_FLAG_HIDDEN);
+  settings_page = lv_obj_create(root);
+  lv_obj_set_size(settings_page, lv_pct(100), lv_pct(100));
+  lv_obj_set_pos(settings_page, 0, 0);
+  lv_obj_add_flag(settings_page, LV_OBJ_FLAG_HIDDEN);
 
   dice_page = lv_obj_create(root);
   lv_obj_set_size(dice_page, lv_pct(100), lv_pct(100));
@@ -1794,7 +1786,7 @@ void BuildScreen() {
 // then returns to the settings page.
 void RebuildScreen() {
   BuildScreen();
-  OpenPairing(nullptr);
+  OpenSettings(nullptr);
 }
 
 } // namespace
