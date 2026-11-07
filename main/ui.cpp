@@ -192,13 +192,12 @@ void RefreshDieInfo(uint32_t pixel_id) {
   }
 }
 
+// Steps OFF -> AP -> NET (when a home network is saved) -> OFF.
 void WifiToggle(lv_event_t *) {
-  const bool enable = !IsWebNetworkEnabled();
-  const esp_err_t result = SetWebNetworkEnabled(model, enable);
+  const esp_err_t result = CycleWebNetworkMode(model, true);
   SetPixelsScannerWifiActive(IsWebNetworkEnabled());
   if (result != ESP_OK) {
-    ESP_LOGE(kTag, "Unable to %s Wi-Fi: %s",
-             enable ? "enable" : "disable", esp_err_to_name(result));
+    ESP_LOGE(kTag, "Unable to change Wi-Fi mode: %s", esp_err_to_name(result));
     return;
   }
   rendered_revision = 0;

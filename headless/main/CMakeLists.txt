@@ -22,3 +22,5 @@ idf_component_register(
     nvs_flash
     pixels_protocol
 )
+
+target_compile_definitions(${COMPONENT_LIB} PRIVATE PIXELS_HEADLESS=1)

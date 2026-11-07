@@ -72,7 +72,8 @@ Each tile can contain:
   grey above 25%, amber to 10%, red below, green with a bolt while external power is
   connected (the `OFF` network label is hidden while Wi-Fi is off). The
   settings `POWER OFF` button shows the percentage.
-- Tap the Wi-Fi row on the settings page to enable or disable networking. The
+- Tap the Wi-Fi row on the settings page to step `OFF -> AP -> NET -> OFF`;
+  `NET` is skipped until a home network has been saved from the web page. The
   touchscreen defaults it off and remembers the selection across reboots. While
   enabled, a muted `http://<address>` line under the row shows where the web UI
   is reachable (the station IP once joined, otherwise the access point).

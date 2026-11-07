@@ -34,8 +34,11 @@ web assets.
   (supported) and `network` (status, address). The page recolours itself from
   the palette so it always matches the theme selected on the hub.
 - Settings actions: `op=theme&value=N`, `op=sleep&value=MINUTES`,
-  `op=powerOff`, `op=factoryReset` (the last two prompt for confirmation in the
-  page). Changes made on the touchscreen bump the SSE revision so open pages
+  `op=wifiMode` (AP <-> saved network; the page never switches Wi-Fi off
+  because that would stop the server mid-request), `op=wifiForget` (clear saved
+  credentials and stay on the hotspot), `op=powerOff`, `op=factoryReset`
+  (destructive ones prompt for confirmation in the page). `network` also
+  reports `hasCredentials` and `canTurnOff`. Changes made on the touchscreen bump the SSE revision so open pages
   follow immediately.
 - Dice cards show the current roll state with state-colored highlighting.
 - The aggregate counts every completed roll until manually cleared; history is
@@ -44,9 +47,11 @@ web assets.
 - While Wi-Fi is enabled, the `Pixels-Dice` WPA2 access point remains active
   in AP+STA mode so a failed home-network configuration cannot make the device
   unreachable.
-- The touchscreen build defaults Wi-Fi off and provides a persistent toggle on
-  the settings page. Its header reports `OFF`, `AP`, `...`, or `NET`, and the
-  settings page shows the reachable `http://` address under the Wi-Fi row.
+- The touchscreen build defaults Wi-Fi off. Its settings Wi-Fi row cycles
+  `OFF -> AP -> NET -> OFF` (`NET` only when a home network is saved) and the
+  choice persists (`sta_on` in NVS). The header reports `OFF`, `AP`, `...`, or
+  `NET`, and the settings page shows the reachable `http://` address under
+  the Wi-Fi row.
 - The access point uses `10.47.1.1/24` rather than the ESP-IDF default
   `192.168.4.0/24`, which commonly collides with home LANs and VLANs and causes
   clients to route hub traffic elsewhere.

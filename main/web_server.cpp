@@ -30,12 +30,20 @@ constexpr char kTag[] = "pixels_web";
 constexpr char kAccessPointSsid[] = "Pixels-Dice";
 constexpr char kAccessPointPassword[] = "pixelsdice";
 constexpr char kAccessPointAddress[] = "10.47.1.1";
+// The headless build has no other UI, so the web page may not switch Wi-Fi off.
+#ifdef PIXELS_HEADLESS
+constexpr bool kNetworkCanTurnOff = false;
+#else
+constexpr bool kNetworkCanTurnOff = true;
+#endif
 
 DiceModel *model;
 httpd_handle_t server;
 std::atomic_bool station_enabled;
 std::atomic<NetworkStatus> network_status{NetworkStatus::kOff};
 std::atomic<uint32_t> station_address{0};
+// User preference: join the saved home network (true) or stay AP-only.
+std::atomic_bool station_wanted{true};
 bool wifi_initialized;
 std::atomic_bool wifi_started;
 std::atomic_bool sse_active;
@@ -94,7 +102,7 @@ input,select{min-width:0;border:1px solid var(--border);background:var(--bg);col
 .danger{background:var(--danger-bg);color:var(--on-accent)}.outline{background:transparent;border:1px solid var(--danger);color:var(--danger)}
 .view[hidden],form[hidden]{display:none}.icon{font-size:22px;line-height:1;padding:6px 12px;min-width:44px}
 .menu{display:grid;gap:8px;margin-top:14px}.menu>button{width:100%;min-height:44px;font-weight:600;text-align:left;padding:10px 14px}
-.menu .setting{min-height:44px}.menu form{margin:0}.wifi .grow{min-width:0}.wifi b{display:block}.wifi .muted{font-size:13px;word-break:break-all}
+.menu .setting{min-height:44px}.menu form{margin:0}.wifi-actions{margin:0}.wifi-actions button{flex:1}.wifi .grow{min-width:0}.wifi b{display:block}.wifi .muted{font-size:13px;word-break:break-all}
 .empty{color:var(--muted);padding:20px;text-align:center}.status{font-size:12px;color:var(--muted)}
 .modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
 .modal[hidden]{display:none}.modal-card{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px;
@@ -127,8 +135,10 @@ width:min(460px,100%);max-height:85vh;overflow:auto}.modal-head{display:flex;ali
 <div class="top"><h1>SETTINGS</h1><button class="accent" onclick="showView('home')">Done</button></div>
 <div class="menu">
 <button class="accent" onclick="showView('pair')">Pair dice ›</button>
-<div class="setting wifi"><div class="grow"><b>Wi-Fi <span id="net-status"></span></b><div id="net-address" class="muted"></div></div>
-<button onclick="toggleWifiForm()">Join network</button></div>
+<div class="setting wifi"><div class="grow"><b>Wi-Fi</b><div id="net-address" class="muted"></div></div>
+<button id="net-mode" onclick="wifiMode()"></button></div>
+<div class="calc-controls wifi-actions"><button onclick="toggleWifiForm()">Join network</button>
+<button id="net-forget" class="outline" hidden onclick="confirmAction('Forget the saved home network and stay on the Pixels-Dice hotspot?','wifiForget')">Forget network</button></div>
 <form id="wifi" hidden><input name="ssid" maxlength="32" placeholder="Network name">
 <input name="password" maxlength="63" type="password" placeholder="Password">
 <button type="submit">Save</button></form>
@@ -158,7 +168,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 async function action(op,id){await fetch('/api/action?op='+op+(id?'&id='+id:''),{method:'POST'});refresh()}
 async function setValue(op,value){await fetch('/api/action?op='+op+'&value='+value,{method:'POST'});refresh()}
 async function confirmAction(text,op){if(!confirm(text))return;const r=await fetch('/api/action?op='+op,{method:'POST'});
-if(!r.ok)alert(await r.text());else document.querySelector('#status').textContent=op==='powerOff'?'Powering off...':'Resetting...'}
+if(!r.ok)alert(await r.text());else if(op==='powerOff'||op==='factoryReset')document.querySelector('#status').textContent=op==='powerOff'?'Powering off...':'Resetting...';else refresh()}
 let themeIndex=-1;
 function applyTheme(t){if(t.index===themeIndex)return;themeIndex=t.index;const c=t.colors,root=document.documentElement;
 for(const k in c)root.style.setProperty('--'+k.replace(/[A-Z]/g,m=>'-'+m.toLowerCase()),c[k]);
@@ -169,14 +179,17 @@ function renderSettings(s){applyTheme(s.theme);const sleep=document.querySelecto
 sleep.innerHTML=s.idleSleep.options.map(m=>`<option value="${m}">${m?m+' min':'Off'}</option>`).join('');sleep.value=s.idleSleep.minutes;
 document.querySelector('#sleep-setting').hidden=document.querySelector('#power-setting').hidden=!s.powerOff.supported;
 document.querySelector('#sleep-note').textContent=s.powerOff.supported?'Auto sleep only runs on battery; it is paused while a charger is connected.':'';
-document.querySelector('#net-status').textContent=s.network.status;
-document.querySelector('#net-address').textContent=`http://${s.network.address} · the Pixels-Dice hotspot stays available`;
+const net=s.network;document.querySelector('#net-mode').textContent=net.status+' ›';
+document.querySelector('#net-forget').hidden=!net.hasCredentials;
+document.querySelector('#net-address').textContent=`http://${net.address}`+(net.status==='CONNECTED'?' · hotspot also on':net.hasCredentials?' · tap to join saved network':' · hotspot only');
 const lighting=document.querySelector('#lighting');lighting.hidden=!s.statusLed.supported;
 if(s.statusLed.supported)document.querySelector('#led-mode').textContent=`${s.statusLed.mode} · ${s.statusLed.state}`}
 const views=['home','settings','pair'];
 function showView(name){if(!views.includes(name))name='home';for(const v of views)document.querySelector('#'+v).hidden=v!==name;
 if(location.hash!==(name==='home'?'':'#'+name))history.pushState(null,'',name==='home'?location.pathname:'#'+name);window.scrollTo(0,0)}
 window.addEventListener('popstate',()=>showView(location.hash.slice(1)||'home'));
+async function wifiMode(){if(document.querySelector('#net-mode').textContent.startsWith('CONNECTED')&&!confirm('Switch to hotspot only? If you are on the home network this page will disconnect.'))return;
+await action('wifiMode')}
 function toggleWifiForm(){const f=document.querySelector('#wifi');f.hidden=!f.hidden;if(!f.hidden)f.ssid.focus()}
 function blink(id){if(id)fetch('/api/action?op=blink&id='+id,{method:'POST'})}
 function inspect(id){if(id)fetch('/api/action?op=info&id='+id,{method:'POST'})}
@@ -292,7 +305,7 @@ void SendTheme(httpd_req_t *request) {
 
 void SendHubSettings(httpd_req_t *request) {
   SendTheme(request);
-  char buffer[224];
+  char buffer[272];
   int n = std::snprintf(buffer, sizeof(buffer),
                         ",\"idleSleep\":{\"minutes\":%u,\"name\":\"%s\","
                         "\"options\":[",
@@ -306,10 +319,13 @@ void SendHubSettings(httpd_req_t *request) {
   char address[16];
   std::snprintf(buffer + n, sizeof(buffer) - n,
                 "]},\"powerOff\":{\"supported\":%s},"
-                "\"network\":{\"status\":\"%s\",\"address\":\"%s\"}",
+                "\"network\":{\"status\":\"%s\",\"address\":\"%s\","
+                "\"hasCredentials\":%s,\"canTurnOff\":%s}",
                 IsPowerOffSupported() ? "true" : "false",
                 NetworkStatusName(network_status.load()),
-                GetWebAddress(address, sizeof(address)));
+                GetWebAddress(address, sizeof(address)),
+                HasWebStationCredentials() ? "true" : "false",
+                kNetworkCanTurnOff ? "true" : "false");
   httpd_resp_sendstr_chunk(request, buffer);
 }
 
@@ -538,8 +554,10 @@ void SseTask(void *context) {
   while (!sse_shutdown.load()) {
     const uint64_t now_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
     // Fold hub settings in so device-side theme/sleep changes push promptly.
-    const uint32_t revision = model->Revision() + ThemeRevision() * 7919U +
-                              IdleSleepMinutes() * 104729U;
+    const uint32_t revision =
+        model->Revision() + ThemeRevision() * 7919U +
+        IdleSleepMinutes() * 104729U +
+        static_cast<uint32_t>(network_status.load()) * 1299709U;
     if (revision != last_revision || now_ms - last_send_ms >= 5000) {
       char event[64];
       std::snprintf(event, sizeof(event),
@@ -684,6 +702,24 @@ esp_err_t ActionHandler(httpd_req_t *request) {
                                    "Unsupported sleep timeout");
       }
     }
+  } else if (std::strcmp(operation, "wifiMode") == 0) {
+    // Never switch Wi-Fi off from the page itself: that would stop the HTTP
+    // server inside this handler. The cycle wraps NET -> AP instead.
+    const esp_err_t result = CycleWebNetworkMode(model, false);
+    if (result != ESP_OK) {
+      return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                 esp_err_to_name(result));
+    }
+    success = true;
+    save_change = false;
+  } else if (std::strcmp(operation, "wifiForget") == 0) {
+    const esp_err_t result = ClearWebStationCredentials();
+    if (result != ESP_OK) {
+      return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                 esp_err_to_name(result));
+    }
+    success = true;
+    save_change = false;
   } else if (std::strcmp(operation, "powerOff") == 0) {
     if (!IsPowerOffSupported()) {
       return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST,
@@ -869,6 +905,37 @@ esp_err_t SaveWifiCredentials(const char *ssid, const char *password) {
   return result;
 }
 
+esp_err_t SaveWifiU8(const char *key, uint8_t value) {
+  nvs_handle_t handle;
+  esp_err_t result = nvs_open("wifi_config", NVS_READWRITE, &handle);
+  if (result != ESP_OK) {
+    return result;
+  }
+  result = nvs_set_u8(handle, key, value);
+  if (result == ESP_OK) {
+    result = nvs_commit(handle);
+  }
+  nvs_close(handle);
+  return result;
+}
+
+bool LoadWifiCredentials(char *ssid, std::size_t ssid_size, char *password,
+                         std::size_t password_size) {
+  ssid[0] = '\0';
+  password[0] = '\0';
+  nvs_handle_t handle;
+  if (nvs_open("wifi_config", NVS_READONLY, &handle) != ESP_OK) {
+    return false;
+  }
+  nvs_get_str(handle, "ssid", ssid, &ssid_size);
+  nvs_get_str(handle, "password", password, &password_size);
+  uint8_t wanted = 1;
+  nvs_get_u8(handle, "sta_on", &wanted);
+  station_wanted.store(wanted != 0);
+  nvs_close(handle);
+  return ssid[0] != '\0';
+}
+
 esp_err_t SaveWifiEnabled(bool enabled) {
   nvs_handle_t handle;
   esp_err_t result = nvs_open("wifi_config", NVS_READWRITE, &handle);
@@ -938,10 +1005,12 @@ esp_err_t WifiHandler(httpd_req_t *request) {
         request, HTTPD_400_BAD_REQUEST,
         "Wi-Fi password must be empty or between 8 and 63 characters");
   }
-  if (SaveWifiCredentials(ssid, password) != ESP_OK) {
+  if (SaveWifiCredentials(ssid, password) != ESP_OK ||
+      SaveWifiU8("sta_on", 1) != ESP_OK) {
     return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR,
                                "Unable to save Wi-Fi credentials");
   }
+  station_wanted.store(true);
   return httpd_resp_sendstr(
       request, ssid[0] == '\0'
                    ? "Home Wi-Fi disabled; access point remains active."
@@ -1055,17 +1124,10 @@ esp_err_t StartWifi() {
   wifi_started.store(true);
   network_status.store(NetworkStatus::kAccessPoint);
 
-  char ssid[33] = {};
-  char password[65] = {};
-  nvs_handle_t handle;
-  if (nvs_open("wifi_config", NVS_READONLY, &handle) == ESP_OK) {
-    std::size_t ssid_size = sizeof(ssid);
-    std::size_t password_size = sizeof(password);
-    nvs_get_str(handle, "ssid", ssid, &ssid_size);
-    nvs_get_str(handle, "password", password, &password_size);
-    nvs_close(handle);
-  }
-  if (ssid[0] != '\0') {
+  char ssid[33];
+  char password[65];
+  if (LoadWifiCredentials(ssid, sizeof(ssid), password, sizeof(password)) &&
+      station_wanted.load()) {
     const esp_err_t result = ApplyStationCredentials(ssid, password);
     if (result != ESP_OK) {
       station_enabled.store(false);
@@ -1232,6 +1294,56 @@ bool RestoreWebNetworkEnabled(bool default_value) {
 
 bool IsWebNetworkEnabled() {
   return network_status.load() != NetworkStatus::kOff;
+}
+
+bool HasWebStationCredentials() {
+  char ssid[33];
+  char password[65];
+  return LoadWifiCredentials(ssid, sizeof(ssid), password, sizeof(password));
+}
+
+bool IsWebStationEnabled() { return station_wanted.load(); }
+
+esp_err_t SetWebStationEnabled(bool enabled) {
+  ESP_RETURN_ON_ERROR(SaveWifiU8("sta_on", enabled ? 1 : 0), kTag,
+                      "Unable to save Wi-Fi mode");
+  station_wanted.store(enabled);
+  if (!wifi_started.load()) {
+    return ESP_OK;
+  }
+  char ssid[33];
+  char password[65];
+  const bool has_credentials =
+      LoadWifiCredentials(ssid, sizeof(ssid), password, sizeof(password));
+  if (!enabled || !has_credentials) {
+    return ApplyStationCredentials("", "");
+  }
+  return ApplyStationCredentials(ssid, password);
+}
+
+esp_err_t ClearWebStationCredentials() {
+  ESP_RETURN_ON_ERROR(SaveWifiCredentials("", ""), kTag,
+                      "Unable to clear Wi-Fi credentials");
+  if (wifi_started.load()) {
+    return ApplyStationCredentials("", "");
+  }
+  return ESP_OK;
+}
+
+esp_err_t CycleWebNetworkMode(DiceModel *dice_model, bool allow_off) {
+  const NetworkStatus status = network_status.load();
+  if (status == NetworkStatus::kOff) {
+    ESP_RETURN_ON_ERROR(SetWebStationEnabled(false), kTag,
+                        "Unable to select access point mode");
+    return SetWebNetworkEnabled(dice_model, true);
+  }
+  if (status == NetworkStatus::kAccessPoint && HasWebStationCredentials()) {
+    return SetWebStationEnabled(true);
+  }
+  if (allow_off) {
+    return SetWebNetworkEnabled(dice_model, false);
+  }
+  return SetWebStationEnabled(false);
 }
 
 NetworkStatus GetWebNetworkStatus() { return network_status.load(); }
