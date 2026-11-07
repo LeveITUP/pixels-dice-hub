@@ -70,7 +70,7 @@ button:disabled{cursor:not-allowed;opacity:.45}.accent{background:var(--accent);
 .die.rolling{border-color:var(--info);box-shadow:0 0 14px color-mix(in srgb,var(--info) 40%,transparent)}.die.handling{border-color:var(--warning)}
 .die.crooked{border-color:var(--danger);box-shadow:0 0 14px color-mix(in srgb,var(--danger) 40%,transparent)}.die.rolled{border-color:var(--success)}
 .die.rolling .die-state{color:var(--info)}.die.handling .die-state{color:var(--warning)}.die.crooked .die-state{color:var(--danger)}
-.die.rolled .die-state{color:var(--success)}.die-state{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+.die.rolled .die-state{color:var(--success)}.die-state{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;text-align:center;overflow:hidden;text-overflow:ellipsis}
 .die.rolling .roll,.die.handling .roll{color:var(--dimmed)}
 .battery{position:relative;display:inline-block;flex:none;width:22px;height:11px;border:1px solid var(--muted);border-radius:3px;padding:1px}
 .battery::after{content:"";position:absolute;right:-4px;top:2px;width:2px;height:5px;background:var(--muted);border-radius:0 1px 1px 0}
@@ -182,8 +182,7 @@ function blink(id){if(id)fetch('/api/action?op=blink&id='+id,{method:'POST'})}
 function inspect(id){if(id)fetch('/api/action?op=info&id='+id,{method:'POST'})}
 function dieCard(d,i){const stateClass=d.state.toLowerCase().replaceAll(' ','-');return `<article class="card die ${stateClass} ${d.offline?'offline':''}" style="--die:${colors[i%colors.length]}" onclick="showDieHistory('${d.id}')">
 <div class="die-head"><b>${esc(d.type)}</b><span class="battery ${batteryClass(d.battery,d.batteryState==='low',d.charging)}" title="${d.battery}%"><i style="width:${Math.max(0,Math.min(100,d.battery))}%"></i></span></div>
-<div class="roll">${d.hasRoll?d.roll:'-'}</div><div class="die-head"><span class="muted">${esc(d.name||('Pixel '+d.id))}</span>
-<span class="die-state">${d.offline?'OFFLINE':esc(d.state)}</span></div></article>`}
+<div class="roll">${d.hasRoll?d.roll:'-'}</div><div class="die-state">${d.offline?'OFFLINE':esc(d.state)}</div></article>`}
 let refreshTimer,refreshing=false,currentDice=[],selectedDieId='',eventsConnected=false;
 function updateDieStatus(){const d=currentDice.find(d=>d.id===selectedDieId);if(!d)return;
 document.querySelector('#die-title').textContent=`${d.type} ${d.name||'Pixel'}`;
