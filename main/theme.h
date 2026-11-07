@@ -33,8 +33,13 @@ constexpr std::size_t kThemeCount = 7;
 
 void InitTheme();
 const Theme &CurrentTheme();
+std::size_t CurrentThemeIndex();
+const Theme &ThemeAt(std::size_t index);
 void SetTheme(std::size_t index);
 void CycleTheme();
+// Incremented on every theme change so other tasks (the LVGL UI) can detect
+// selections made from the web UI and rebuild.
+uint32_t ThemeRevision();
 
 // Blends `color` toward the current panel colour for subtle card tints.
 uint32_t ThemeTint(uint32_t color);

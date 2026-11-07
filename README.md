@@ -102,7 +102,7 @@ When enabled, both firmware variants create a WPA2 access point:
 
 - Network: `Pixels-Dice`
 - Password: `pixelsdice`
-- Address: `http://192.168.4.1`
+- Address: `http://10.47.1.1`
 
 The single-page dashboard mirrors the dice grid and aggregate control, supports
 pairing and removal, displays live roll states, and keeps the last 20
@@ -114,9 +114,11 @@ information, installed profile hash, available die flash, and temperatures,
 and provides an unpair action. Closing the history view blinks the die again.
 The aggregate has a separate `CLR` action that does not erase history.
 Server-sent events notify the page of model changes, with periodic HTTP refresh
-as a fallback. The Wi-Fi form can
-additionally connect the device to an existing network while leaving the access
-point available.
+as a fallback. The page uses the same layout as the touchscreen: a settings
+cog in the header opens `Pair dice`, Wi-Fi (showing the current address and a
+form to join an existing network while the access point stays available),
+status light, theme, auto sleep, power off and factory reset. The page's
+colours follow the theme selected on the hub.
 
 The touchscreen settings page (the header cog) starts with `PAIR DICE`, which
 opens a separate page listing discovered and paired dice (`ADD` / `REMOVE`),

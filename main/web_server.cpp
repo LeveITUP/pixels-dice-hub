@@ -21,6 +21,7 @@
 #include "power.h"
 #include "preferences.h"
 #include "status_led.h"
+#include "theme.h"
 
 namespace app {
 namespace {
@@ -28,11 +29,13 @@ namespace {
 constexpr char kTag[] = "pixels_web";
 constexpr char kAccessPointSsid[] = "Pixels-Dice";
 constexpr char kAccessPointPassword[] = "pixelsdice";
+constexpr char kAccessPointAddress[] = "10.47.1.1";
 
 DiceModel *model;
 httpd_handle_t server;
 std::atomic_bool station_enabled;
 std::atomic<NetworkStatus> network_status{NetworkStatus::kOff};
+std::atomic<uint32_t> station_address{0};
 bool wifi_initialized;
 std::atomic_bool wifi_started;
 std::atomic_bool sse_active;
@@ -45,51 +48,67 @@ constexpr char kIndexHtml[] = R"HTML(<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1020">
 <title>Pixels Dice Hub</title>
 <style>
-:root{color-scheme:dark;--bg:#0b1020;--panel:#172033;--muted:#94a3b8;--text:#f8fafc;--accent:#2563eb}
+:root{color-scheme:dark;--bg:#0b1020;--panel:#172033;--text:#f8fafc;--on-accent:#f8fafc;--muted:#94a3b8;--dimmed:#334155;
+--accent:#2563eb;--accent-text:#bfdbfe;--accent-alt:#1d4ed8;--button:#334155;--danger:#f87171;--danger-bg:#991b1b;
+--success:#4ade80;--success-bg:#166534;--warning:#f59e0b;--info:#38bdf8;--violet:#a78bfa;--stale:#64748b;--border:#334155}
+:root.light{color-scheme:light}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,sans-serif}
-main{max-width:1000px;margin:auto;padding:16px}.top{display:flex;align-items:center;justify-content:space-between}
-h1,h2,p{margin:0}.muted{color:var(--muted)}button,input{font:inherit;border-radius:8px}
-button{border:0;background:#334155;color:var(--text);padding:9px 12px;cursor:pointer}
-button:disabled{cursor:not-allowed;opacity:.45}
-.calc-controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.calc-controls button{min-width:42px}
-.calc-result{font-size:36px;font-weight:700;color:#4ade80;margin-top:8px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:14px 0}
-.card{background:var(--panel);border:1px solid #334155;border-radius:12px;padding:12px;min-height:120px}
-.die{cursor:pointer}
-.die{border-color:var(--die,#38bdf8)}.die.offline{opacity:.55}.die-head{display:flex;justify-content:space-between}
-.die.rolling{border-color:#38bdf8;box-shadow:0 0 14px #38bdf866}.die.handling{border-color:#f59e0b}
-.die.crooked{border-color:#ef4444;box-shadow:0 0 14px #ef444466}.die.rolled{border-color:#22c55e}
-.die.rolling .die-state{color:#38bdf8}.die.handling .die-state{color:#f59e0b}.die.crooked .die-state{color:#f87171}
-.die.rolled .die-state{color:#4ade80}.die-state{font-size:12px;font-weight:700;color:#94a3b8}
-.die.rolling .roll,.die.handling .roll{color:#334155}
-.battery{position:relative;display:inline-block;width:22px;height:11px;border:1px solid var(--muted);border-radius:3px;padding:1px}
+main{max-width:1000px;margin:auto;padding:clamp(10px,3vw,20px)}.top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+h1,h2,p{margin:0}h2{font-size:17px}.muted{color:var(--muted)}button,input,select{font:inherit;border-radius:8px}
+button{border:0;background:var(--button);color:var(--on-accent);padding:9px 12px;min-height:40px;cursor:pointer;touch-action:manipulation}
+button:disabled{cursor:not-allowed;opacity:.45}.accent{background:var(--accent);color:var(--on-accent)}
+.calc-controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}.calc-controls button{min-width:42px}
+.num{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.calc-result{font-size:clamp(26px,6vw,36px);font-weight:700;color:var(--success);margin-top:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:14px 0}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;min-height:120px}
+.die{cursor:pointer;border-color:var(--die,var(--info))}.die.offline{opacity:.55}.die-head{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.die-head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.die.rolling{border-color:var(--info);box-shadow:0 0 14px color-mix(in srgb,var(--info) 40%,transparent)}.die.handling{border-color:var(--warning)}
+.die.crooked{border-color:var(--danger);box-shadow:0 0 14px color-mix(in srgb,var(--danger) 40%,transparent)}.die.rolled{border-color:var(--success)}
+.die.rolling .die-state{color:var(--info)}.die.handling .die-state{color:var(--warning)}.die.crooked .die-state{color:var(--danger)}
+.die.rolled .die-state{color:var(--success)}.die-state{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+.die.rolling .roll,.die.handling .roll{color:var(--dimmed)}
+.battery{position:relative;display:inline-block;flex:none;width:22px;height:11px;border:1px solid var(--muted);border-radius:3px;padding:1px}
 .battery::after{content:"";position:absolute;right:-4px;top:2px;width:2px;height:5px;background:var(--muted);border-radius:0 1px 1px 0}
-.battery i{display:block;height:100%;background:var(--muted);border-radius:1px}.battery.low i{background:#f87171}
-.battery.warn i{background:#f59e0b}.battery.charging i{background:#4ade80}
-.hub-low{color:#f87171}.hub-warn{color:#f59e0b}.hub-usb{color:#4ade80}
-.roll{font-size:52px;font-weight:700;text-align:center;line-height:1.25;text-shadow:
--1px -1px #000,1px -1px #000,-1px 1px #000,1px 1px #000}
-.aggregate-row{display:grid;grid-template-columns:1fr auto;gap:8px}.aggregate{background:var(--accent);display:flex;
-align-items:center;justify-content:space-between;min-height:84px;width:100%}.aggregate strong{font-size:44px}
-.clear{background:#991b1b;min-width:76px;font-weight:700}.mode-detail{display:flex;flex-direction:column;align-items:flex-start}
-.section{margin-top:20px}.row{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #26344b}
-.row .grow{flex:1}.history-value{font-size:24px;font-weight:700;min-width:48px;text-align:right}
+.battery i{display:block;height:100%;background:var(--muted);border-radius:1px}.battery.low i{background:var(--danger)}
+.battery.warn i{background:var(--warning)}.battery.charging i{background:var(--success)}
+.hub-low{color:var(--danger)}.hub-warn{color:var(--warning)}.hub-usb{color:var(--success)}
+.roll{font-size:clamp(40px,9vw,52px);font-weight:700;text-align:center;line-height:1.25;text-shadow:
+-1px -1px var(--bg),1px -1px var(--bg),-1px 1px var(--bg),1px 1px var(--bg)}
+.aggregate-row{display:grid;grid-template-columns:1fr auto;gap:8px}.aggregate{background:var(--accent);color:var(--on-accent);display:flex;
+align-items:center;justify-content:space-between;min-height:84px;width:100%;border-color:transparent}.aggregate strong{font-size:clamp(34px,8vw,44px)}
+.aggregate small{color:var(--accent-text)}
+.clear{background:var(--danger-bg);color:var(--on-accent);min-width:76px;font-weight:700}.mode-detail{display:flex;flex-direction:column;align-items:flex-start}
+.section{margin-top:20px}.row{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
+.row .grow{flex:1;min-width:0}.row .grow b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-value{font-size:24px;font-weight:700;min-width:48px;text-align:right}
 form{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:10px}
-input{min-width:0;border:1px solid #475569;background:#111827;color:var(--text);padding:9px}
+input,select{min-width:0;border:1px solid var(--border);background:var(--bg);color:var(--text);padding:9px;min-height:40px}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px}
+.setting{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.setting label,.setting b{font-weight:600}.setting select,.setting button{flex:none}
+.danger{background:var(--danger-bg);color:var(--on-accent)}.outline{background:transparent;border:1px solid var(--danger);color:var(--danger)}
+.view[hidden],form[hidden]{display:none}.icon{font-size:22px;line-height:1;padding:6px 12px;min-width:44px}
+.menu{display:grid;gap:8px;margin-top:14px}.menu>button{width:100%;min-height:44px;font-weight:600;text-align:left;padding:10px 14px}
+.menu .setting{min-height:44px}.menu form{margin:0}.wifi .grow{min-width:0}.wifi b{display:block}.wifi .muted{font-size:13px;word-break:break-all}
 .empty{color:var(--muted);padding:20px;text-align:center}.status{font-size:12px;color:var(--muted)}
-.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px}
-.modal[hidden]{display:none}.modal-card{background:var(--bg);border:1px solid #475569;border-radius:14px;padding:16px;
-width:min(460px,100%);max-height:85vh;overflow:auto}.modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+.modal[hidden]{display:none}.modal-card{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px;
+width:min(460px,100%);max-height:85vh;overflow:auto}.modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px}
 .die-info{white-space:pre-line;margin:8px 0}
-@media(max-width:560px){main{padding:10px}form{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}
-.card{min-height:105px}.roll{font-size:42px}}
+@media(max-width:560px){form{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}
+.card{min-height:105px}.aggregate-row{grid-template-columns:1fr}.clear{min-height:44px}}
+@media(max-width:360px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body><main>
+<div id="home" class="view">
 <div class="top"><div><h1>PIXELS</h1><div id="status" class="status">Connecting...</div></div>
-<button onclick="refresh()">Refresh</button></div>
+<button class="icon" onclick="showView('settings')" title="Settings" aria-label="Settings">&#9881;</button></div>
 <div id="dice" class="grid"></div>
 <div class="aggregate-row"><button id="aggregate" class="card aggregate" onclick="action('cycle')">
 <span class="mode-detail"><span id="mode">SUM</span><small id="roll-count">0 rolls</small></span><strong id="total">-</strong></button>
@@ -102,16 +121,30 @@ width:min(460px,100%);max-height:85vh;overflow:auto}.modal-head{display:flex;ali
 <div id="calc-result" class="calc-result"></div>
 <div class="calc-controls"><button id="calc-start" onclick="action('calcStart')">Start round</button>
 <button onclick="action('calcCancel')">Cancel</button></div></section>
-<section class="section"><h2>Pair dice</h2><div id="pairing"></div></section>
 <section class="section"><h2>Last 20 rolls</h2><div id="history"></div></section>
-<section id="lighting" class="section card" hidden><h2>Hub lighting</h2>
-<p class="muted">Blue while rolling, amber while handled, red if crooked, green when the current dice finish.</p>
-<div class="calc-controls"><button id="led-mode" onclick="action('ledMode')">Status light</button>
-<span id="led-state" class="muted"></span></div></section>
-<section class="section"><h2>Wi-Fi</h2><p class="muted">The Pixels-Dice access point remains available. Save credentials to also join your home network.</p>
-<form id="wifi"><input name="ssid" maxlength="32" placeholder="Network name">
+</div>
+<div id="settings" class="view" hidden>
+<div class="top"><h1>SETTINGS</h1><button class="accent" onclick="showView('home')">Done</button></div>
+<div class="menu">
+<button class="accent" onclick="showView('pair')">Pair dice ›</button>
+<div class="setting wifi"><div class="grow"><b>Wi-Fi <span id="net-status"></span></b><div id="net-address" class="muted"></div></div>
+<button onclick="toggleWifiForm()">Join network</button></div>
+<form id="wifi" hidden><input name="ssid" maxlength="32" placeholder="Network name">
 <input name="password" maxlength="63" type="password" placeholder="Password">
-<button type="submit">Save</button></form></section>
+<button type="submit">Save</button></form>
+<div id="lighting" class="setting" hidden><label>Status light</label><button id="led-mode" onclick="action('ledMode')">Status light</button></div>
+<div class="setting"><label for="theme">Theme</label><select id="theme" onchange="setValue('theme',this.value)"></select></div>
+<div id="sleep-setting" class="setting" hidden><label for="sleep">Auto sleep</label><select id="sleep" onchange="setValue('sleep',this.value)"></select></div>
+<div id="power-setting" class="setting" hidden><label>Power</label><button class="danger" onclick="confirmAction('Power off the hub now?','powerOff')">Power off</button></div>
+<div class="setting"><label>Reset</label><button class="outline" onclick="confirmAction('Factory reset erases paired dice, Wi-Fi and all settings. Continue?','factoryReset')">Factory reset</button></div>
+</div>
+<p id="sleep-note" class="muted" style="margin-top:10px"></p>
+</div>
+<div id="pair" class="view" hidden>
+<div class="top"><h1>PAIR DICE</h1><button onclick="showView('settings')">Back</button></div>
+<p class="muted">Paired dice stay listed; nearby unpaired Pixels appear below them. Handle a die to wake it.</p>
+<div id="pairing"></div>
+</div>
 </main>
 <div id="die-modal" class="modal" hidden onclick="closeDieHistory()"><div class="modal-card" onclick="event.stopPropagation()">
 <div class="modal-head"><div><h2 id="die-title">Die history</h2><div id="die-status" class="muted"></div>
@@ -123,6 +156,28 @@ function batteryClass(p,low,charging){return charging?'charging':(low||p<15)?'lo
 const colors=['#8b5cf6','#38bdf8','#f59e0b','#22c55e','#ec4899','#06b6d4','#f97316','#84cc16'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function action(op,id){await fetch('/api/action?op='+op+(id?'&id='+id:''),{method:'POST'});refresh()}
+async function setValue(op,value){await fetch('/api/action?op='+op+'&value='+value,{method:'POST'});refresh()}
+async function confirmAction(text,op){if(!confirm(text))return;const r=await fetch('/api/action?op='+op,{method:'POST'});
+if(!r.ok)alert(await r.text());else document.querySelector('#status').textContent=op==='powerOff'?'Powering off...':'Resetting...'}
+let themeIndex=-1;
+function applyTheme(t){if(t.index===themeIndex)return;themeIndex=t.index;const c=t.colors,root=document.documentElement;
+for(const k in c)root.style.setProperty('--'+k.replace(/[A-Z]/g,m=>'-'+m.toLowerCase()),c[k]);
+root.style.setProperty('--border',c.dimmed);root.classList.toggle('light',t.light);
+colors.splice(0,colors.length,...t.tiles);document.querySelector('meta[name=theme-color]').content=c.bg;
+const sel=document.querySelector('#theme');sel.innerHTML=t.names.map((n,i)=>`<option value="${i}">${esc(n)}</option>`).join('');sel.value=t.index}
+function renderSettings(s){applyTheme(s.theme);const sleep=document.querySelector('#sleep');
+sleep.innerHTML=s.idleSleep.options.map(m=>`<option value="${m}">${m?m+' min':'Off'}</option>`).join('');sleep.value=s.idleSleep.minutes;
+document.querySelector('#sleep-setting').hidden=document.querySelector('#power-setting').hidden=!s.powerOff.supported;
+document.querySelector('#sleep-note').textContent=s.powerOff.supported?'Auto sleep only runs on battery; it is paused while a charger is connected.':'';
+document.querySelector('#net-status').textContent=s.network.status;
+document.querySelector('#net-address').textContent=`http://${s.network.address} · the Pixels-Dice hotspot stays available`;
+const lighting=document.querySelector('#lighting');lighting.hidden=!s.statusLed.supported;
+if(s.statusLed.supported)document.querySelector('#led-mode').textContent=`${s.statusLed.mode} · ${s.statusLed.state}`}
+const views=['home','settings','pair'];
+function showView(name){if(!views.includes(name))name='home';for(const v of views)document.querySelector('#'+v).hidden=v!==name;
+if(location.hash!==(name==='home'?'':'#'+name))history.pushState(null,'',name==='home'?location.pathname:'#'+name);window.scrollTo(0,0)}
+window.addEventListener('popstate',()=>showView(location.hash.slice(1)||'home'));
+function toggleWifiForm(){const f=document.querySelector('#wifi');f.hidden=!f.hidden;if(!f.hidden)f.ssid.focus()}
 function blink(id){if(id)fetch('/api/action?op=blink&id='+id,{method:'POST'})}
 function inspect(id){if(id)fetch('/api/action?op=info&id='+id,{method:'POST'})}
 function dieCard(d,i){const stateClass=d.state.toLowerCase().replaceAll(' ','-');return `<article class="card die ${stateClass} ${d.offline?'offline':''}" style="--die:${colors[i%colors.length]}" onclick="showDieHistory('${d.id}')">
@@ -147,7 +202,7 @@ function calcButton(label,op){return `<button onclick="action('${op}')">${esc(la
 function renderCalculator(c){document.querySelector('#calc-preset').textContent=c.preset+' ›';
 const rolling=c.status==='ROLLING';document.querySelector('#calc-prev').disabled=rolling;
 document.querySelector('#calc-preset').disabled=rolling;
-const controls=[];const number=(label,value,down,up)=>controls.push(`<span class="muted">${esc(label)}</span>${calcButton('−',down)}<b>${value}</b>${calcButton('+',up)}`);
+const controls=[];const number=(label,value,down,up)=>controls.push(`<span class="num"><span class="muted">${esc(label)}</span>${calcButton('−',down)}<b>${value}</b>${calcButton('+',up)}</span>`);
 if(!rolling&&c.preset==='D20 CHECK'){number('Modifier',c.modifier,'calcModDown','calcModUp');
 controls.push(calcButton(c.dcEnabled?`DC ${c.dc}`:'DC off','calcDcToggle'));if(c.dcEnabled)number('DC',c.dc,'calcDcDown','calcDcUp')}
 else if(!rolling&&(c.preset==='ADVANTAGE'||c.preset==='DISADVANTAGE'))number('Modifier',c.modifier,'calcModDown','calcModUp');
@@ -164,13 +219,10 @@ async function refresh(){if(refreshing)return;refreshing=true;try{const r=await 
 currentDice=s.dice;updateDieStatus();const active=s.dice.filter(d=>d.active);
 const b=s.battery;const hub=b&&b.supported&&b.valid?` · <span class="hub-${b.externalPower?'usb':b.low?'low':b.percent<=25?'warn':'ok'}">hub ${b.percent}%${b.externalPower?' ⚡':''}</span>`:'';
 document.querySelector('#status').innerHTML=`${active.length} active · ${s.dice.length} paired · ${s.candidates.length} found${hub}`;
-document.querySelector('#dice').innerHTML=active.length?active.map(dieCard).join(''):`<div class="card empty">No active dice<br><small>${s.dice.length} paired · ${s.candidates.length} found</small><br>Handle a die or pair one below</div>`;
+document.querySelector('#dice').innerHTML=active.length?active.map(dieCard).join(''):`<div class="card empty">No active dice<br><small>${s.dice.length} paired · ${s.candidates.length} found</small><br>Handle a die or pair one in <a href="#settings" onclick="showView('pair');return false">settings</a></div>`;
 document.querySelector('#mode').textContent=s.aggregate.mode+' ›';document.querySelector('#total').textContent=s.aggregate.hasValue?s.aggregate.value:'-';
 document.querySelector('#roll-count').textContent=s.aggregate.rollCount+' roll'+(s.aggregate.rollCount===1?'':'s');
-renderCalculator(s.calculator);
-const lighting=document.querySelector('#lighting');lighting.hidden=!s.statusLed.supported;
-if(s.statusLed.supported){document.querySelector('#led-mode').textContent='Status light: '+s.statusLed.mode;
-document.querySelector('#led-state').textContent=s.statusLed.state}
+renderCalculator(s.calculator);renderSettings(s);
 const paired=s.dice.map(d=>`<div class="row"><div class="grow"><b>${esc(d.type)} ${esc(d.name)}</b><div class="muted">${d.id}</div></div><button onclick="action('unpair','${d.id}')">Remove</button></div>`);
 const found=s.candidates.map(d=>`<div class="row"><div class="grow"><b>${esc(d.type)} ${esc(d.name)}</b><div class="muted">${d.id} · ${d.rssi} dBm</div></div><button onclick="action('pair','${d.id}')">Add</button></div>`);
 document.querySelector('#pairing').innerHTML=[...paired,...found].join('')||'<div class="empty">No Pixels discovered yet</div>';
@@ -182,9 +234,85 @@ events.onopen=()=>{eventsConnected=true;scheduleFallback()};
 events.addEventListener('state',()=>refresh());
 events.onerror=()=>{eventsConnected=false;refresh();scheduleFallback()}}
 document.querySelector('#wifi').addEventListener('submit',async e=>{e.preventDefault();const b=new URLSearchParams(new FormData(e.target));
-const r=await fetch('/api/wifi',{method:'POST',body:b});alert(await r.text());e.target.reset()});
-refresh();scheduleFallback();
+const r=await fetch('/api/wifi',{method:'POST',body:b});alert(await r.text());e.target.reset();e.target.hidden=true});
+showView(location.hash.slice(1)||'home');refresh();scheduleFallback();
 </script></body></html>)HTML";
+
+bool IsLightTheme(const Theme &theme) {
+  const uint32_t bg = theme.background;
+  const uint32_t luma = ((bg >> 16) & 0xff) * 299 + ((bg >> 8) & 0xff) * 587 +
+                        (bg & 0xff) * 114;
+  return luma > 128000;
+}
+
+void SendTheme(httpd_req_t *request) {
+  const Theme &theme = CurrentTheme();
+  char buffer[640];
+  int n = std::snprintf(
+      buffer, sizeof(buffer),
+      ",\"theme\":{\"index\":%u,\"name\":\"%s\",\"light\":%s,\"colors\":{"
+      "\"bg\":\"#%06lx\",\"panel\":\"#%06lx\",\"text\":\"#%06lx\","
+      "\"onAccent\":\"#%06lx\",\"muted\":\"#%06lx\",\"dimmed\":\"#%06lx\","
+      "\"accent\":\"#%06lx\",\"accentText\":\"#%06lx\",\"accentAlt\":\"#%06lx\","
+      "\"button\":\"#%06lx\",\"danger\":\"#%06lx\",\"dangerBg\":\"#%06lx\","
+      "\"success\":\"#%06lx\",\"successBg\":\"#%06lx\",\"warning\":\"#%06lx\","
+      "\"info\":\"#%06lx\",\"violet\":\"#%06lx\",\"stale\":\"#%06lx\"},\"tiles\":[",
+      static_cast<unsigned>(CurrentThemeIndex()), theme.name,
+      IsLightTheme(theme) ? "true" : "false",
+      static_cast<unsigned long>(theme.background),
+      static_cast<unsigned long>(theme.panel),
+      static_cast<unsigned long>(theme.text),
+      static_cast<unsigned long>(theme.on_accent),
+      static_cast<unsigned long>(theme.muted),
+      static_cast<unsigned long>(theme.dimmed),
+      static_cast<unsigned long>(theme.accent),
+      static_cast<unsigned long>(theme.accent_text),
+      static_cast<unsigned long>(theme.accent_alt),
+      static_cast<unsigned long>(theme.button),
+      static_cast<unsigned long>(theme.danger),
+      static_cast<unsigned long>(theme.danger_bg),
+      static_cast<unsigned long>(theme.success),
+      static_cast<unsigned long>(theme.success_bg),
+      static_cast<unsigned long>(theme.warning),
+      static_cast<unsigned long>(theme.info),
+      static_cast<unsigned long>(theme.violet),
+      static_cast<unsigned long>(theme.stale));
+  for (std::size_t i = 0; i < 8; ++i) {
+    n += std::snprintf(buffer + n, sizeof(buffer) - n, "%s\"#%06lx\"",
+                       i ? "," : "",
+                       static_cast<unsigned long>(theme.tile_accents[i]));
+  }
+  n += std::snprintf(buffer + n, sizeof(buffer) - n, "],\"names\":[");
+  for (std::size_t i = 0; i < kThemeCount; ++i) {
+    n += std::snprintf(buffer + n, sizeof(buffer) - n, "%s\"%s\"",
+                       i ? "," : "", ThemeAt(i).name);
+  }
+  std::snprintf(buffer + n, sizeof(buffer) - n, "]}");
+  httpd_resp_sendstr_chunk(request, buffer);
+}
+
+void SendHubSettings(httpd_req_t *request) {
+  SendTheme(request);
+  char buffer[224];
+  int n = std::snprintf(buffer, sizeof(buffer),
+                        ",\"idleSleep\":{\"minutes\":%u,\"name\":\"%s\","
+                        "\"options\":[",
+                        IdleSleepMinutes(), IdleSleepName());
+  bool first = true;
+  for (uint8_t option : kIdleSleepChoices) {
+    n += std::snprintf(buffer + n, sizeof(buffer) - n, "%s%u",
+                       first ? "" : ",", option);
+    first = false;
+  }
+  char address[16];
+  std::snprintf(buffer + n, sizeof(buffer) - n,
+                "]},\"powerOff\":{\"supported\":%s},"
+                "\"network\":{\"status\":\"%s\",\"address\":\"%s\"}",
+                IsPowerOffSupported() ? "true" : "false",
+                NetworkStatusName(network_status.load()),
+                GetWebAddress(address, sizeof(address)));
+  httpd_resp_sendstr_chunk(request, buffer);
+}
 
 const char *BatteryStateName(const Die &die) {
   switch (die.battery_state) {
@@ -375,12 +503,14 @@ esp_err_t StateHandler(httpd_req_t *request) {
   std::snprintf(buffer, sizeof(buffer),
                 ",\"battery\":{\"supported\":%s,\"valid\":%s,"
                 "\"percent\":%d,\"millivolts\":%d,\"externalPower\":%s,"
-                "\"low\":%s},\"history\":[",
+                "\"low\":%s}",
                 battery.supported ? "true" : "false",
                 battery.valid ? "true" : "false", battery.percent,
                 battery.millivolts, battery.external_power ? "true" : "false",
                 battery.low ? "true" : "false");
   httpd_resp_sendstr_chunk(request, buffer);
+  SendHubSettings(request);
+  httpd_resp_sendstr_chunk(request, ",\"history\":[");
   for (std::size_t i = 0; i < snapshot.history_count; ++i) {
     const RollEvent &event = snapshot.history[i];
     if (i != 0) {
@@ -408,7 +538,9 @@ void SseTask(void *context) {
   uint64_t last_send_ms = 0;
   while (!sse_shutdown.load()) {
     const uint64_t now_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
-    const uint32_t revision = model->Revision();
+    // Fold hub settings in so device-side theme/sleep changes push promptly.
+    const uint32_t revision = model->Revision() + ThemeRevision() * 7919U +
+                              IdleSleepMinutes() * 104729U;
     if (revision != last_revision || now_ms - last_send_ms >= 5000) {
       char event[64];
       std::snprintf(event, sizeof(event),
@@ -526,6 +658,48 @@ esp_err_t ActionHandler(httpd_req_t *request) {
   } else if (std::strcmp(operation, "ledMode") == 0) {
     success = CycleStatusLedMode();
     save_change = false;
+  } else if (std::strcmp(operation, "theme") == 0 ||
+             std::strcmp(operation, "sleep") == 0) {
+    char value_text[8];
+    char *end = nullptr;
+    const long value =
+        QueryValue(request, "value", value_text, sizeof(value_text))
+            ? std::strtol(value_text, &end, 10)
+            : -1;
+    if (end == nullptr || *end != '\0' || value < 0 || value > 255) {
+      return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST,
+                                 "Invalid value");
+    }
+    save_change = false;
+    if (operation[0] == 't') {
+      if (static_cast<std::size_t>(value) >= kThemeCount) {
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST,
+                                   "Unknown theme");
+      }
+      SetTheme(static_cast<std::size_t>(value));
+      success = true;
+    } else {
+      success = SetIdleSleepMinutes(static_cast<uint8_t>(value));
+      if (!success) {
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST,
+                                   "Unsupported sleep timeout");
+      }
+    }
+  } else if (std::strcmp(operation, "powerOff") == 0) {
+    if (!IsPowerOffSupported()) {
+      return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST,
+                                 "Power off is not supported on this board");
+    }
+    RequestPowerOff("Powering off");
+    success = true;
+    save_change = false;
+  } else if (std::strcmp(operation, "factoryReset") == 0) {
+    // Answer first so the browser sees the acknowledgement, then reset from a
+    // short-lived task rather than inside the HTTP handler.
+    httpd_resp_sendstr(request, "ok");
+    xTaskCreate([](void *) { FactoryReset(); }, "factory_reset", 3072,
+                nullptr, 5, nullptr);
+    return ESP_OK;
   } else if (std::strcmp(operation, "calcStart") == 0) {
     if (!model->StartCalculator()) {
       httpd_resp_set_status(request, "409 Conflict");
@@ -776,15 +950,20 @@ esp_err_t WifiHandler(httpd_req_t *request) {
                      "remains active.");
 }
 
-void WifiEvent(void *, esp_event_base_t event_base, int32_t event_id, void *) {
+void WifiEvent(void *, esp_event_base_t event_base, int32_t event_id,
+               void *event_data) {
   if (event_base == WIFI_EVENT &&
       event_id == WIFI_EVENT_STA_DISCONNECTED && station_enabled.load()) {
     network_status.store(NetworkStatus::kConnecting);
+    station_address.store(0);
     esp_wifi_connect();
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP &&
              wifi_started.load() && station_enabled.load()) {
+    const auto *event = static_cast<const ip_event_got_ip_t *>(event_data);
+    station_address.store(event->ip_info.ip.addr);
     network_status.store(NetworkStatus::kConnected);
-    ESP_LOGI(kTag, "Connected to home Wi-Fi");
+    ESP_LOGI(kTag, "Connected to home Wi-Fi at " IPSTR,
+             IP2STR(&event->ip_info.ip));
   }
 }
 
@@ -797,6 +976,17 @@ esp_err_t StartWifi() {
     }
     esp_netif_t *access_point_netif = esp_netif_create_default_wifi_ap();
     esp_netif_t *station_netif = esp_netif_create_default_wifi_sta();
+    if (access_point_netif != nullptr) {
+      // Use an uncommon subnet so the hotspot does not collide with typical
+      // home/VLAN ranges (192.168.x.x, 10.0.x.x) and get routed away.
+      esp_netif_ip_info_t ip_info = {};
+      ip_info.ip.addr = esp_ip4addr_aton(kAccessPointAddress);
+      ip_info.gw.addr = ip_info.ip.addr;
+      ip_info.netmask.addr = esp_ip4addr_aton("255.255.255.0");
+      esp_netif_dhcps_stop(access_point_netif);
+      esp_netif_set_ip_info(access_point_netif, &ip_info);
+      esp_netif_dhcps_start(access_point_netif);
+    }
 
     wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
     bool driver_initialized = false;
@@ -887,8 +1077,8 @@ esp_err_t StartWifi() {
                esp_err_to_name(result));
     }
   }
-  ESP_LOGI(kTag, "Web UI available on Wi-Fi '%s' at http://192.168.4.1",
-           kAccessPointSsid);
+  ESP_LOGI(kTag, "Web UI available on Wi-Fi '%s' at http://%s",
+           kAccessPointSsid, kAccessPointAddress);
   return ESP_OK;
 }
 
@@ -1046,6 +1236,17 @@ bool IsWebNetworkEnabled() {
 }
 
 NetworkStatus GetWebNetworkStatus() { return network_status.load(); }
+
+const char *GetWebAddress(char *buffer, std::size_t size) {
+  const uint32_t address = station_address.load();
+  if (network_status.load() == NetworkStatus::kConnected && address != 0) {
+    esp_ip4_addr_t ip = {address};
+    std::snprintf(buffer, size, IPSTR, IP2STR(&ip));
+  } else {
+    std::snprintf(buffer, size, "%s", kAccessPointAddress);
+  }
+  return buffer;
+}
 
 const char *NetworkStatusName(NetworkStatus status) {
   switch (status) {

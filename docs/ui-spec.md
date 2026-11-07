@@ -73,7 +73,9 @@ Each tile can contain:
   connected (the `OFF` network label is hidden while Wi-Fi is off). The
   settings `POWER OFF` button shows the percentage.
 - Tap the Wi-Fi row on the settings page to enable or disable networking. The
-  touchscreen defaults it off and remembers the selection across reboots.
+  touchscreen defaults it off and remembers the selection across reboots. While
+  enabled, a muted `http://<address>` line under the row shows where the web UI
+  is reachable (the station IP once joined, otherwise the access point).
 - Tap an available die's `ADD` control to register it. Pairing rows retain
   first-seen order and do not rebuild for routine RSSI or state updates.
 - Tap a registered die's remove control, then confirm, to unregister it.

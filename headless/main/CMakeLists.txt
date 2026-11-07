@@ -7,6 +7,7 @@ idf_component_register(
     "../../main/dice_model.cpp"
     "../../main/pixels_ble.cpp"
     "../../main/preferences.cpp"
+    "../../main/theme.cpp"
     "../../main/web_server.cpp"
   INCLUDE_DIRS
     "."

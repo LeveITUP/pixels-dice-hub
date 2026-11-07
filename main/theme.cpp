@@ -177,6 +177,7 @@ constexpr Theme kThemes[kThemeCount] = {
 };
 
 std::atomic<std::size_t> current_index{0};
+std::atomic<uint32_t> revision{0};
 
 void SaveTheme(std::size_t index) {
   nvs_handle_t handle;
@@ -206,11 +207,20 @@ void InitTheme() {
 
 const Theme &CurrentTheme() { return kThemes[current_index.load()]; }
 
+std::size_t CurrentThemeIndex() { return current_index.load(); }
+
+const Theme &ThemeAt(std::size_t index) {
+  return kThemes[index < kThemeCount ? index : 0];
+}
+
+uint32_t ThemeRevision() { return revision.load(); }
+
 void SetTheme(std::size_t index) {
   if (index >= kThemeCount) {
     index = 0;
   }
   current_index.store(index);
+  revision.fetch_add(1);
   SaveTheme(index);
   ESP_LOGI(kTag, "Theme %s", CurrentTheme().name);
 }

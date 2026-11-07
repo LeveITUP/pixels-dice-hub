@@ -2,6 +2,7 @@
 #include "dice_model.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "nvs_flash.h"
 #include "pixels_ble.h"
 #include "power.h"
@@ -43,5 +44,6 @@ extern "C" void app_main() {
     ESP_LOGI(kTag, "Wi-Fi disabled; enable it from the touchscreen");
   }
   ESP_ERROR_CHECK(app::StartPixelsScanner(&model));
-  ESP_LOGI(kTag, "Pixels dice display started");
+  ESP_LOGI(kTag, "Pixels dice display started (free internal heap %u B)",
+           static_cast<unsigned>(esp_get_free_internal_heap_size()));
 }

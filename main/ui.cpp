@@ -97,6 +97,8 @@ uint32_t rendered_calculator_revision;
 bool calculator_defaults_initialized;
 NetworkStatus rendered_settings_network_status = NetworkStatus::kOff;
 int rendered_settings_battery_percent = -1;
+uint8_t rendered_settings_sleep_minutes = 0;
+uint32_t rendered_theme_revision = 0;
 board::Orientation orientation = board::Orientation::kPortrait;
 
 int Scale(int value) {
@@ -207,6 +209,7 @@ void IdleSleepToggle(lv_event_t *) {
   BuildSettings();
 }
 
+void BuildScreen();
 void RebuildScreen();
 
 void ThemeToggle(lv_event_t *) {
@@ -884,6 +887,7 @@ void BuildSettings() {
 
   const BatteryStatus battery = GetBatteryStatus();
   rendered_settings_battery_percent = battery.valid ? battery.percent : -1;
+  rendered_settings_sleep_minutes = IdleSleepMinutes();
   lv_obj_t *title =
       MakeMenuLabel(settings_page, "SETTINGS", &lv_font_montserrat_14, kText);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, Scale(2), Scale(2));
@@ -923,6 +927,18 @@ void BuildSettings() {
   std::snprintf(wifi_text, sizeof(wifi_text), "WIFI %s",
                 NetworkStatusName(network_status));
   add_setting(network_enabled ? kSuccessBg : kButton, WifiToggle, wifi_text);
+  if (network_enabled) {
+    char address[16];
+    char address_text[40];
+    std::snprintf(address_text, sizeof(address_text), "http://%s",
+                  GetWebAddress(address, sizeof(address)));
+    lv_obj_t *address_label = MakeMenuLabel(
+        settings_page, address_text, &lv_font_montserrat_12, kMuted);
+    lv_obj_set_pos(address_label, 0, list_top - Scale(kRowStep - kRowHeight));
+    lv_obj_set_width(address_label, lv_pct(100));
+    lv_obj_set_style_text_align(address_label, LV_TEXT_ALIGN_CENTER, 0);
+    list_top += Scale(18);
+  }
 
   if (StatusLedSupported()) {
     char status_led_text[32];
@@ -1598,11 +1614,22 @@ void UiTimer(lv_timer_t *) {
     rendered_revision = snapshot.revision;
     rendered_dashboard_time_signature = dashboard_time_signature;
   }
+  if (ThemeRevision() != rendered_theme_revision) {
+    // Theme changed from the web UI; rebuild in place.
+    const bool settings_open =
+        !lv_obj_has_flag(settings_page, LV_OBJ_FLAG_HIDDEN);
+    BuildScreen();
+    if (settings_open) {
+      OpenSettings(nullptr);
+    }
+    return;
+  }
   if (!lv_obj_has_flag(settings_page, LV_OBJ_FLAG_HIDDEN)) {
     const BatteryStatus battery = GetBatteryStatus();
     const int battery_percent = battery.valid ? battery.percent : -1;
     if (network_status != rendered_settings_network_status ||
-        battery_percent != rendered_settings_battery_percent) {
+        battery_percent != rendered_settings_battery_percent ||
+        IdleSleepMinutes() != rendered_settings_sleep_minutes) {
       BuildSettings();
     }
   }
@@ -1685,6 +1712,7 @@ void BuildScreen() {
   reset_dialog = nullptr;
   battery_body = battery_fill = battery_terminal = battery_bolt = nullptr;
   rendered_battery_percent = -1;
+  rendered_theme_revision = ThemeRevision();
   rendered_pairing_signature = 0;
   rendered_history_count = 0;
   rendered_calculator_revision = 0;

@@ -23,6 +23,20 @@ web assets.
   connect to one die at a time, pause scanning, complete or time out, disconnect,
   and then resume scanning.
 - Pair, remove, aggregate-mode, and clear-round actions use `/api/action`.
+- The page follows the touchscreen layout: a home view (dice grid, aggregate,
+  guided calculator, overall history) and a settings view behind the header
+  cog. Settings list `Pair dice` first (its own sub-view), then Wi-Fi with the
+  current address, status light (where fitted), theme, auto sleep, power off
+  (battery hubs only) and factory reset. Views are addressed by URL hash
+  (`#settings`, `#pair`) so the browser back button works.
+- `/api/state` includes `theme` (index, name, light flag, colour palette, tile
+  colours, available names), `idleSleep` (minutes, options), `powerOff`
+  (supported) and `network` (status, address). The page recolours itself from
+  the palette so it always matches the theme selected on the hub.
+- Settings actions: `op=theme&value=N`, `op=sleep&value=MINUTES`,
+  `op=powerOff`, `op=factoryReset` (the last two prompt for confirmation in the
+  page). Changes made on the touchscreen bump the SSE revision so open pages
+  follow immediately.
 - Dice cards show the current roll state with state-colored highlighting.
 - The aggregate counts every completed roll until manually cleared; history is
   retained when a round is cleared.
@@ -31,7 +45,11 @@ web assets.
   in AP+STA mode so a failed home-network configuration cannot make the device
   unreachable.
 - The touchscreen build defaults Wi-Fi off and provides a persistent toggle on
-  the pairing/settings page. Its header reports `OFF`, `AP`, `...`, or `NET`.
+  the settings page. Its header reports `OFF`, `AP`, `...`, or `NET`, and the
+  settings page shows the reachable `http://` address under the Wi-Fi row.
+- The access point uses `10.47.1.1/24` rather than the ESP-IDF default
+  `192.168.4.0/24`, which commonly collides with home LANs and VLANs and causes
+  clients to route hub traffic elsewhere.
 - The headless build always enables Wi-Fi because the web page is its only UI.
 - BLE scanning uses a 95% duty cycle while touchscreen Wi-Fi is off and 50%
   while Wi-Fi and BLE share the radio.
@@ -50,6 +68,12 @@ roll would create unnecessary flash wear and would require defining rollover
 and retention behavior.
 
 ## Constraints
+
+- The S3 AMOLED build must let `malloc` fall back to PSRAM
+  (`CONFIG_SPIRAM_USE_MALLOC`, with Wi-Fi/LWIP and NimBLE buffers allowed in
+  external RAM and LVGL using the C allocator). With the display, LVGL and BLE
+  all resident, internal RAM alone is not enough for the Wi-Fi driver's RX
+  buffers and `esp_wifi_start` fails with `ESP_ERR_NO_MEM`.
 
 - Wi-Fi and BLE share the 2.4 GHz radio. Normal use is expected to work, but an
   eight-die soak test is required to quantify missed advertisements.

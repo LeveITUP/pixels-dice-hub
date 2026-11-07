@@ -16,4 +16,12 @@ bool IsPowerOffPending() { return false; }
 
 const char *PowerOffReason() { return ""; }
 
+uint8_t IdleSleepMinutes() { return 0; }
+
+void CycleIdleSleep() {}
+
+bool SetIdleSleepMinutes(uint8_t) { return false; }
+
+const char *IdleSleepName() { return "OFF"; }
+
 } // namespace app

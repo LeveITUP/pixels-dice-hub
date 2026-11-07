@@ -37,7 +37,6 @@ int filtered_millivolts;
 int critical_samples;
 int charger_samples;
 bool charger_by_voltage;
-constexpr uint8_t kIdleSleepOptions[] = {5, 15, 30, 60, 0};
 constexpr uint8_t kDefaultIdleSleepMinutes = 15;
 std::atomic<uint8_t> idle_sleep_minutes{kDefaultIdleSleepMinutes};
 
@@ -48,7 +47,7 @@ void LoadIdleSleep() {
   }
   uint8_t stored;
   if (nvs_get_u8(handle, "idle_sleep", &stored) == ESP_OK) {
-    for (uint8_t option : kIdleSleepOptions) {
+    for (uint8_t option : kIdleSleepChoices) {
       if (option == stored) {
         idle_sleep_minutes = stored;
       }
@@ -191,17 +190,28 @@ uint8_t IdleSleepMinutes() { return idle_sleep_minutes.load(); }
 void CycleIdleSleep() {
   const uint8_t current = idle_sleep_minutes.load();
   constexpr std::size_t count =
-      sizeof(kIdleSleepOptions) / sizeof(kIdleSleepOptions[0]);
+      sizeof(kIdleSleepChoices) / sizeof(kIdleSleepChoices[0]);
   std::size_t index = 0;
   for (std::size_t i = 0; i < count; ++i) {
-    if (kIdleSleepOptions[i] == current) {
+    if (kIdleSleepChoices[i] == current) {
       index = i;
     }
   }
-  const uint8_t next = kIdleSleepOptions[(index + 1) % count];
-  idle_sleep_minutes = next;
-  SaveIdleSleep(next);
+  SetIdleSleepMinutes(kIdleSleepChoices[(index + 1) % count]);
+}
+
+bool SetIdleSleepMinutes(uint8_t minutes) {
+  bool supported = false;
+  for (uint8_t option : kIdleSleepChoices) {
+    supported = supported || option == minutes;
+  }
+  if (!supported) {
+    return false;
+  }
+  idle_sleep_minutes = minutes;
+  SaveIdleSleep(minutes);
   ESP_LOGI(kTag, "Auto sleep set to %s", IdleSleepName());
+  return true;
 }
 
 const char *IdleSleepName() {

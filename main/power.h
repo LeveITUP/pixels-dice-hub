@@ -38,6 +38,9 @@ const char *PowerOffReason();
 // Persisted in NVS and cycled through 5 / 15 / 30 / 60 / off.
 uint8_t IdleSleepMinutes();
 void CycleIdleSleep();
+// Returns false when `minutes` is not one of the supported options.
+bool SetIdleSleepMinutes(uint8_t minutes);
 const char *IdleSleepName();
+constexpr uint8_t kIdleSleepChoices[] = {5, 15, 30, 60, 0};
 
 } // namespace app
