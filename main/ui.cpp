@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -66,6 +67,7 @@ lv_obj_t *aggregate_value;
 lv_obj_t *aggregate_clear;
 lv_obj_t *count_label;
 lv_obj_t *network_status_label;
+lv_obj_t *header_title;
 lv_obj_t *header_right;
 lv_obj_t *battery_body;
 lv_obj_t *battery_fill;
@@ -100,6 +102,9 @@ int rendered_settings_battery_percent = -1;
 uint8_t rendered_settings_sleep_minutes = 0;
 uint32_t rendered_theme_revision = 0;
 board::Orientation orientation = board::Orientation::kPortrait;
+#ifdef PIXELS_DEV_TOOLS
+bool orientation_locked;
+#endif
 
 int Scale(int value) {
   return std::max(1, (value * metrics.scale_percent + 50) / 100);
@@ -395,7 +400,7 @@ void BuildModePage() {
   lv_obj_set_scroll_dir(mode_page, LV_DIR_VER);
 
   lv_obj_t *title =
-      MakeMenuLabel(mode_page, "RESULT / GAME", &lv_font_montserrat_14, kText);
+      MakeMenuLabel(mode_page, "ROLL MODE", &lv_font_montserrat_14, kText);
   lv_obj_set_pos(title, Scale(2), Scale(6));
   lv_obj_t *back = lv_button_create(mode_page);
   lv_obj_set_size(back, Scale(64), Scale(34));
@@ -490,7 +495,7 @@ void OpenResetDialog(lv_event_t *) {
   lv_obj_set_size(reset_dialog, lv_pct(100), lv_pct(100));
   lv_obj_set_pos(reset_dialog, 0, 0);
   lv_obj_set_style_bg_color(reset_dialog, Color(kBackground), 0);
-  lv_obj_set_style_bg_opa(reset_dialog, LV_OPA_90, 0);
+  lv_obj_set_style_bg_opa(reset_dialog, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(reset_dialog, 0, 0);
   lv_obj_set_style_radius(reset_dialog, 0, 0);
   lv_obj_set_style_pad_all(reset_dialog, Scale(12), 0);
@@ -507,7 +512,10 @@ void OpenResetDialog(lv_event_t *) {
   lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(body, LV_ALIGN_CENTER, 0, -Scale(10));
 
-  const int button_width = (lv_obj_get_content_width(reset_dialog) - Scale(10)) / 2;
+  lv_obj_update_layout(reset_dialog);
+  const int button_width =
+      std::max(static_cast<int>(lv_obj_get_content_width(reset_dialog) - Scale(10)) / 2,
+               Scale(60));
   lv_obj_t *cancel = lv_button_create(reset_dialog);
   lv_obj_set_size(cancel, button_width, Scale(40));
   lv_obj_align(cancel, LV_ALIGN_BOTTOM_LEFT, 0, -Scale(20));
@@ -556,7 +564,23 @@ void AggregatePressTracker(lv_event_t *event) {
   }
 }
 
-void MakeBatteryIndicator(lv_obj_t *parent, const Die &die, bool stale) {
+// Keeps a page title clear of the button(s) on the right by capping its width
+// and eliding with dots; `reserved` is the width taken by those buttons.
+void FitPageTitle(lv_obj_t *title, lv_obj_t *page, int reserved) {
+  lv_obj_update_layout(page);
+  lv_obj_set_width(title,
+                   std::max<lv_coord_t>(lv_obj_get_content_width(page) -
+                                            reserved - Scale(10),
+                                        Scale(48)));
+  lv_obj_set_height(title, lv_font_get_line_height(lv_obj_get_style_text_font(
+                               title, LV_PART_MAIN)));
+  lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
+}
+
+// `bottom` tucks the gauge into the bottom-right corner (next to the state
+// ring) for tiles too narrow to share the top row with the type label.
+void MakeBatteryIndicator(lv_obj_t *parent, const Die &die, bool stale,
+                          bool bottom = false) {
   // Same tiers as the hub gauge; battery_state 1 is the die's own "low" flag.
   const bool die_low = die.battery_state == 1 || die.battery < 15;
   const uint32_t color = stale          ? kStale
@@ -564,9 +588,10 @@ void MakeBatteryIndicator(lv_obj_t *parent, const Die &die, bool stale) {
                          : die_low      ? kDanger
                          : die.battery <= 25 ? kWarning
                                              : kMuted;
+  const lv_align_t corner = bottom ? LV_ALIGN_BOTTOM_RIGHT : LV_ALIGN_TOP_RIGHT;
   lv_obj_t *body = lv_obj_create(parent);
   lv_obj_set_size(body, Scale(18), Scale(10));
-  lv_obj_align(body, LV_ALIGN_TOP_RIGHT, -Scale(4), 0);
+  lv_obj_align(body, corner, -Scale(4), bottom ? -Scale(1) : 0);
   lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(body, Scale(1), 0);
   lv_obj_set_style_border_color(body, Color(color), 0);
@@ -590,7 +615,7 @@ void MakeBatteryIndicator(lv_obj_t *parent, const Die &die, bool stale) {
 
   lv_obj_t *terminal = lv_obj_create(parent);
   lv_obj_set_size(terminal, Scale(3), Scale(6));
-  lv_obj_align(terminal, LV_ALIGN_TOP_RIGHT, 0, Scale(2));
+  lv_obj_align(terminal, corner, 0, bottom ? -Scale(3) : Scale(2));
   lv_obj_set_style_bg_color(terminal, Color(color), 0);
   lv_obj_set_style_border_width(terminal, 0, 0);
   lv_obj_set_style_radius(terminal, Scale(1), 0);
@@ -890,6 +915,7 @@ void BuildSettings() {
   lv_obj_t *title =
       MakeMenuLabel(settings_page, "SETTINGS", &lv_font_montserrat_14, kText);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, Scale(2), Scale(2));
+  FitPageTitle(title, settings_page, Scale(64));
   lv_obj_t *done = lv_button_create(settings_page);
   lv_obj_set_size(done, Scale(64), Scale(34));
   lv_obj_align(done, LV_ALIGN_TOP_RIGHT, 0, -Scale(2));
@@ -920,7 +946,7 @@ void BuildSettings() {
   };
 
   add_setting(kAccent, OpenDicePage, LV_SYMBOL_BLUETOOTH " PAIR DICE");
-  add_setting(kButton, OpenModePageFromSettings, "RESULT / GAME");
+  add_setting(kButton, OpenModePageFromSettings, "ROLL MODE");
 
   char wifi_text[32];
   std::snprintf(wifi_text, sizeof(wifi_text), "WIFI %s",
@@ -984,6 +1010,7 @@ void BuildDicePage(const Snapshot &snapshot) {
   lv_obj_t *title =
       MakeMenuLabel(dice_page, "PAIR DICE", &lv_font_montserrat_14, kText);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, Scale(2), Scale(2));
+  FitPageTitle(title, dice_page, Scale(64));
   lv_obj_t *back = lv_button_create(dice_page);
   lv_obj_set_size(back, Scale(64), Scale(34));
   lv_obj_align(back, LV_ALIGN_TOP_RIGHT, 0, -Scale(2));
@@ -1015,14 +1042,27 @@ void BuildDicePage(const Snapshot &snapshot) {
     std::snprintf(heading, sizeof(heading), "%s  %s",
                   pixels::DieTypeName(die.type),
                   die.name[0] == '\0' ? "Pixel" : die.name);
+    // Keep the text clear of the action button; long names are elided.
+    lv_obj_update_layout(row);
+    const int text_width =
+        std::max(static_cast<int>(lv_obj_get_content_width(row)) -
+                     Scale(64) - Scale(6),
+                 Scale(40));
     lv_obj_t *name =
         MakeMenuLabel(row, heading, &lv_font_montserrat_12, kText);
+    lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+    lv_obj_set_size(
+        name, text_width,
+        lv_font_get_line_height(lv_obj_get_style_text_font(name, LV_PART_MAIN)));
     lv_obj_align(name, LV_ALIGN_TOP_LEFT, 0, 0);
 
     char detail[24];
     std::snprintf(detail, sizeof(detail), "SIGNAL %ddBm", die.rssi);
-    lv_obj_t *info =
-        MakeMenuLabel(row, detail, &lv_font_montserrat_12, kMuted);
+    lv_obj_t *info = MakeLabel(row, detail, &lv_font_montserrat_12, kMuted);
+    lv_label_set_long_mode(info, LV_LABEL_LONG_DOT);
+    lv_obj_set_size(
+        info, text_width,
+        lv_font_get_line_height(lv_obj_get_style_text_font(info, LV_PART_MAIN)));
     lv_obj_align(info, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
     lv_obj_t *button = lv_button_create(row);
@@ -1137,9 +1177,10 @@ void BuildCalculator() {
   }
 
   lv_obj_t *title =
-      MakeMenuLabel(calculator_page, "CALCULATOR", &lv_font_montserrat_14,
+      MakeMenuLabel(calculator_page, "CALCULATOR", &lv_font_montserrat_12,
                     kText);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, Scale(2), Scale(2));
+  FitPageTitle(title, calculator_page, Scale(64));
   lv_obj_t *back = lv_button_create(calculator_page);
   lv_obj_set_size(back, Scale(64), Scale(34));
   lv_obj_align(back, LV_ALIGN_TOP_RIGHT, 0, -Scale(2));
@@ -1174,18 +1215,30 @@ void BuildCalculator() {
     lv_obj_set_pos(progress_label, Scale(2), Scale(116));
 
     if (snapshot.status == CalculatorStatus::kComplete) {
+      // Long verdicts ("17 - SUCCESS DC 10") drop to the medium font so they
+      // wrap to two lines instead of spilling over the progress text.
+      const bool long_result = std::strlen(snapshot.result_text) > 8;
       lv_obj_t *result =
           MakeLabel(calculator_page, snapshot.result_text,
-                    &lv_font_montserrat_32,
+                    long_result ? &lv_font_montserrat_24
+                                : &lv_font_montserrat_32,
                     snapshot.has_check && !snapshot.check_passed
                         ? kDanger
                         : kSuccess);
       lv_obj_set_width(result, lv_pct(100));
       lv_obj_set_style_text_align(result, LV_TEXT_ALIGN_CENTER, 0);
+      lv_label_set_long_mode(result, LV_LABEL_LONG_WRAP);
       if (landscape) {
         lv_obj_set_pos(result, 0, Scale(140));
       } else {
-        lv_obj_align(result, LV_ALIGN_CENTER, 0, Scale(18));
+        // Centre within the gap below the progress line and above the button.
+        lv_obj_update_layout(calculator_page);
+        const int top = Scale(140);
+        const int bottom =
+            lv_obj_get_content_height(calculator_page) - Scale(48);
+        lv_obj_align(result, LV_ALIGN_CENTER, 0,
+                     (top + bottom) / 2 -
+                         lv_obj_get_content_height(calculator_page) / 2);
       }
 
       lv_obj_t *again = lv_button_create(calculator_page);
@@ -1419,20 +1472,28 @@ void BuildDashboard(const Snapshot &snapshot, uint64_t now_ms) {
         MakeLabel(tile, pixels::DieTypeName(die.type), &lv_font_montserrat_14,
                   stale ? kMuted : accents[i]);
     lv_obj_align(type, LV_ALIGN_TOP_LEFT, 0, 0);
-    MakeBatteryIndicator(tile, die, stale);
+    lv_obj_update_layout(type);
+    const bool narrow = lv_obj_get_width(type) + Scale(24) + Scale(4) >
+                        tile_width - 2 * Scale(6);
+    MakeBatteryIndicator(tile, die, stale, narrow);
 
     char value[8] = "-";
     if (die.has_roll) {
       std::snprintf(value, sizeof(value), "%d", die.last_roll);
     }
-    const lv_font_t *value_font =
-        tile_height >= 72 && tile_width >= 72 ? &lv_font_montserrat_48
-                                              : &lv_font_montserrat_32;
+    // Pick the value font from the real pixel budget (card padding removed)
+    // rather than via ResponsiveFont, which would upsize it again on dense
+    // grids and run into the type label.
+    const int budget = std::min(tile_height, tile_width) - 2 * Scale(6);
+    const lv_font_t *value_font = budget >= 64   ? &lv_font_montserrat_48
+                                  : budget >= 40 ? &lv_font_montserrat_32
+                                                 : &lv_font_montserrat_24;
     const bool awaiting_roll =
         die.roll_state == pixels::RollState::kHandling ||
         die.roll_state == pixels::RollState::kRolling;
     lv_obj_t *roll =
         MakeLabel(tile, value, value_font, awaiting_roll ? kDimmed : kText);
+    lv_obj_set_style_text_font(roll, value_font, 0);
     lv_obj_set_style_text_outline_stroke_color(roll, Color(kBackground), 0);
     lv_obj_set_style_text_outline_stroke_width(roll, 1, 0);
     lv_obj_set_style_text_outline_stroke_opa(roll, LV_OPA_COVER, 0);
@@ -1561,6 +1622,22 @@ void UpdateHeaderBattery() {
   }
 }
 
+// Hides the title when the status cluster (NET, bolt, gauge, count, cog)
+// would run into it in portrait.
+void FitHeaderTitle() {
+  if (header_title == nullptr || header_right == nullptr) {
+    return;
+  }
+  lv_obj_update_layout(header_right);
+  const int title_end = lv_obj_get_x(header_title) +
+                        lv_obj_get_width(header_title) + Scale(6);
+  if (lv_obj_get_x(header_right) < title_end) {
+    lv_obj_add_flag(header_title, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_remove_flag(header_title, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 void UiTimer(lv_timer_t *) {
   const uint64_t now_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
   if (IsPowerOffPending()) {
@@ -1593,6 +1670,7 @@ void UiTimer(lv_timer_t *) {
                             ? kInfo
                             : kMuted),
       0);
+  FitHeaderTitle();
   const Snapshot snapshot = model->GetSnapshot(now_ms);
   const bool model_changed = snapshot.revision != rendered_revision;
   if (model_changed || lv_display_get_inactive_time(nullptr) < 500) {
@@ -1687,6 +1765,11 @@ void OrientationTask(void *) {
         candidate = detected;
         stable_samples = 1;
       }
+#ifdef PIXELS_DEV_TOOLS
+      if (orientation_locked) {
+        candidate = orientation;
+      }
+#endif
       if (candidate != orientation && stable_samples >= 8 &&
           lvgl_port_lock(1000)) {
         orientation = candidate;
@@ -1719,8 +1802,8 @@ void BuildScreen() {
   lv_obj_set_style_border_width(root, 0, 0);
   lv_obj_set_style_pad_all(root, 0, 0);
 
-  lv_obj_t *title = MakeLabel(root, "PIXELS", &lv_font_montserrat_14, kText);
-  lv_obj_set_pos(title, Scale(8), Scale(6));
+  header_title = MakeLabel(root, "PIXELS", &lv_font_montserrat_14, kText);
+  lv_obj_set_pos(header_title, Scale(8), Scale(6));
 
   // Right-hand header cluster: [NET] [bolt][battery] [count] [cog].
   header_right = MakePlainBox(root);
@@ -1817,6 +1900,22 @@ void RebuildScreen() {
 }
 
 } // namespace
+
+#ifdef PIXELS_DEV_TOOLS
+void SetUiOrientation(board::Orientation forced) {
+  if (!lvgl_port_lock(1000)) {
+    return;
+  }
+  orientation_locked = true;
+  orientation = forced;
+  board::SetOrientation(hardware, orientation);
+  Relayout();
+  if (!lv_obj_has_flag(calculator_page, LV_OBJ_FLAG_HIDDEN)) {
+    BuildCalculator();
+  }
+  lvgl_port_unlock();
+}
+#endif
 
 esp_err_t StartUi(board::Hardware *board_hardware, DiceModel *dice_model) {
   hardware = board_hardware;

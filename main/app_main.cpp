@@ -1,4 +1,7 @@
 #include "board.h"
+#ifdef PIXELS_DEV_TOOLS
+#include "dev_tools.h"
+#endif
 #include "dice_model.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -36,6 +39,11 @@ extern "C" void app_main() {
   app::InitTheme();
   ESP_ERROR_CHECK(app::StartStatusLed(&hardware, &model));
   ESP_ERROR_CHECK(app::StartUi(&hardware, &model));
+#ifdef PIXELS_DEV_TOOLS
+  // Dev builds are driven over the network, so never boot with Wi-Fi off.
+  app::SetPixelsScannerWifiActive(true);
+  ESP_ERROR_CHECK(app::SetWebNetworkEnabled(&model, true));
+#else
   const bool wifi_enabled = app::RestoreWebNetworkEnabled(false);
   app::SetPixelsScannerWifiActive(wifi_enabled);
   if (wifi_enabled) {
@@ -43,7 +51,11 @@ extern "C" void app_main() {
   } else {
     ESP_LOGI(kTag, "Wi-Fi disabled; enable it from the touchscreen");
   }
+#endif
   ESP_ERROR_CHECK(app::StartPixelsScanner(&model));
+#ifdef PIXELS_DEV_TOOLS
+  ESP_ERROR_CHECK(app::StartDevTools(&hardware, &model));
+#endif
   ESP_LOGI(kTag, "Pixels dice display started (free internal heap %u B)",
            static_cast<unsigned>(esp_get_free_internal_heap_size()));
 }

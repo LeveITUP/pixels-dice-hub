@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pixels Dice Hub — User Manual</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm 16mm; }
+  html { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #1b1f2a; }
+  body { margin: 0; font-size: 10.5pt; line-height: 1.4; }
+  h1 { font-size: 26pt; margin: 0 0 2mm; letter-spacing: .5px; }
+  h2 { font-size: 15pt; margin: 0 0 3mm; padding-bottom: 1.5mm; border-bottom: 2px solid #2563eb; color: #0f172a; }
+  h3 { font-size: 11pt; margin: 3mm 0 1.2mm; color: #1e3a8a; }
+  p { margin: 0 0 2.2mm; }
+  ul, ol { margin: 0 0 2.5mm; padding-left: 5.5mm; }
+  li { margin-bottom: 0.9mm; }
+  .page { margin-bottom: 7mm; }
+  .page.cover { page-break-after: always; margin-bottom: 0; }
+  h2 { break-after: avoid; }
+  h3 { break-after: avoid; }
+  .subtitle { color: #475569; font-size: 12pt; margin-bottom: 6mm; }
+  .cover { display: flex; flex-direction: column; justify-content: center; min-height: 240mm; }
+  .cover .hero { display: flex; gap: 8mm; align-items: center; margin: 8mm 0; }
+  .cover .hero img { height: 110mm; }
+  .cover .meta { color: #64748b; font-size: 9.5pt; margin-top: 10mm; }
+  .row { display: flex; gap: 4mm; align-items: flex-start; margin: 2mm 0 2.5mm; break-inside: avoid; page-break-inside: avoid; }
+  .row.center { justify-content: center; }
+  .text { flex: 1 1 70mm; min-width: 60mm; }
+  figure { margin: 0; text-align: center; flex: 0 0 auto; }
+  figure img { display: block; border-radius: 3mm; border: 1.5px solid #cbd5e1; }
+  figure.p img { height: 64mm; }
+  figure.ps img { height: 46mm; }
+  figure.pxs img { height: 42mm; }
+  figure.l img { height: 42mm; }
+  figcaption { font-size: 8.2pt; color: #475569; margin-top: 1mm; max-width: 50mm; }
+  figure.l figcaption { max-width: 80mm; }
+  .grid { display: flex; flex-wrap: wrap; gap: 3mm; justify-content: center; margin: 1.5mm 0 2mm; break-inside: avoid; }
+  .callout { background: #eff6ff; border-left: 3px solid #2563eb; padding: 2mm 3mm; margin: 2.5mm 0; border-radius: 1.5mm; font-size: 9.8pt; }
+  .warn { background: #fef2f2; border-left-color: #dc2626; }
+  table { border-collapse: collapse; width: 100%; font-size: 9pt; margin: 1.5mm 0 3mm; }
+  th, td { border: 1px solid #cbd5e1; padding: 1.3mm 2mm; text-align: left; vertical-align: top; }
+  th { background: #f1f5f9; }
+  .swatch { display: inline-block; width: 3mm; height: 3mm; border-radius: 50%; vertical-align: middle; margin-right: 1.2mm; border: 1px solid #0003; }
+  kbd { font-family: inherit; font-weight: 600; background: #e2e8f0; padding: 0 1.2mm; border-radius: 1mm; font-size: 9.4pt; }
+  .toc li { margin-bottom: 1.2mm; }
+  .foot { position: running(footer); }
+  .small { font-size: 9pt; color: #475569; }
+</style>
+</head>
+<body>
+
+<!-- ───────────────────────── COVER ───────────────────────── -->
+<section class="page cover">
+  <h1>Pixels Dice Hub</h1>
+  <div class="subtitle">User manual — ESP32-S3 1.64″ AMOLED touchscreen edition</div>
+  <div class="hero">
+    <img src="img/08_four_dice.png" alt="Home screen with four dice">
+    <div class="text">
+      <p>The Pixels Dice Hub pairs with up to eight <strong>Pixels</strong> Bluetooth dice and shows every roll on a
+         pocket-sized touchscreen: one tile per die, a live results panel (sum, highest or lowest), a roll history for
+         each die, and guided rolls for checks, advantage, dice pools and damage.</p>
+      <h3>Contents</h3>
+      <ol class="toc">
+        <li>Getting started — power, screen layout</li>
+        <li>Pairing dice</li>
+        <li>Reading the dashboard</li>
+        <li>Results panel: sum, highest, lowest</li>
+        <li>Die history and die info</li>
+        <li>Settings: Wi-Fi &amp; web UI, themes, sleep, reset</li>
+        <li>Advanced: guided rolls (calculator)</li>
+      </ol>
+    </div>
+  </div>
+  <p class="meta">Screenshots are taken from the hub itself in the default MIDNIGHT theme. Firmware 0.1.x.</p>
+</section>
+
+<!-- ───────────────────────── 1. GETTING STARTED ───────────────────────── -->
+<section class="page">
+  <h2>1. Getting started</h2>
+  <div class="row">
+    <div class="text">
+      <h3>Power</h3>
+      <ul>
+        <li><strong>Turn on / wake:</strong> press the <kbd>BOOT</kbd> button on the board (the nub on the case edge).</li>
+        <li><strong>Turn off:</strong> press and hold the results panel at the bottom of the home screen for
+            <strong>2 seconds</strong>, or open Settings and tap <kbd>POWER OFF</kbd>. A short countdown overlay lets you
+            cancel by lifting your finger early.</li>
+        <li><strong>Auto sleep:</strong> after 15 minutes without any roll or touch the hub powers itself off
+            (adjustable in Settings, see §6).</li>
+        <li><strong>Charging:</strong> plug USB-C into the board. The header shows a ⚡ bolt while on USB power and the
+            battery gauge turns green when charging.</li>
+      </ul>
+      <h3>Home screen layout</h3>
+      <ul>
+        <li><strong>Header</strong> — <em>NET</em> appears when Wi-Fi is on, then the ⚡/battery gauge of the hub itself,
+            then <em>active / paired</em> dice (e.g. <em>4/4</em>), and the ⚙ settings cog.</li>
+        <li><strong>Dice tiles</strong> — one per active die. The grid re-flows automatically for 1–8 dice.</li>
+        <li><strong>Results panel</strong> — the blue bar: tap it to choose SUM / HIGHEST / LOWEST or a guided roll;
+            <kbd>CLR</kbd> starts a fresh round.</li>
+      </ul>
+      <div class="callout">With nothing paired the home screen reads <em>NO ACTIVE DICE</em>. Tap anywhere on that
+        message to jump straight to pairing.</div>
+    </div>
+    <figure class="p"><img src="img/01_empty.png" alt="Empty home screen"><figcaption>Fresh hub, nothing paired yet</figcaption></figure>
+    <figure class="p"><img src="img/02_settings.png" alt="Settings"><figcaption>⚙ opens Settings</figcaption></figure>
+  </div>
+
+  <h3>Orientation</h3>
+  <div class="row">
+    <div class="text">
+      <p>The hub follows its motion sensor: stand it upright for a portrait layout or lay it on its side for landscape.
+         In landscape the results panel moves to the right-hand edge so all tiles stay visible.</p>
+      <p class="small">Rotation happens a moment after the board settles, so it won't flip while you shake dice.</p>
+    </div>
+    <figure class="l"><img src="img/15_landscape_4.png" alt="Landscape four dice"><figcaption>Landscape, 4 dice</figcaption></figure>
+    <figure class="l"><img src="img/15b_landscape_8.png" alt="Landscape eight dice"><figcaption>Landscape, 8 dice</figcaption></figure>
+  </div>
+</section>
+
+<!-- ───────────────────────── 2. PAIRING ───────────────────────── -->
+<section class="page">
+  <h2>2. Pairing dice</h2>
+  <div class="row">
+    <div class="text">
+      <ol>
+        <li>Tap ⚙ then <kbd>PAIR DICE</kbd> (or tap the <em>NO ACTIVE DICE</em> message).</li>
+        <li>Pick up or roll a die. Every Pixels die the hub can hear appears in the list with its type, name and signal
+            strength. Already-paired dice are outlined green; new ones are outlined blue.</li>
+        <li>Tap <kbd>ADD</kbd> next to a die to pair it. The hub connects briefly to read its details, and the die shows
+            up on the home screen on its next roll.</li>
+        <li>Tap <kbd>REMOVE</kbd> to forget a die. Pairings are saved and survive power-off.</li>
+        <li><kbd>BACK</kbd> returns to Settings; <kbd>DONE</kbd> returns home.</li>
+      </ol>
+      <div class="callout">Up to <strong>8 dice</strong> can be paired. Dice that have not been heard for 30 minutes drop
+        off the dashboard (the header count shows e.g. <em>3/4</em>) but stay paired and reappear as soon as they move.</div>
+      <h3>Tips</h3>
+      <ul>
+        <li>Rolling a die wakes it and makes it advertise — if a die is missing from the list, give it a shake.</li>
+        <li>Signal strength (dBm) closer to 0 is better; −60 dBm is a strong signal, −90 dBm is marginal.</li>
+        <li>Pairing is also available from the web UI (§6) for typing-free setup from a phone.</li>
+      </ul>
+    </div>
+    <figure class="p"><img src="img/03_pairing.png" alt="Pair dice list"><figcaption>Dice in range, none paired</figcaption></figure>
+    <figure class="p"><img src="img/04_pairing_added.png" alt="One die added"><figcaption>D20 “Onyx” paired</figcaption></figure>
+  </div>
+</section>
+
+<!-- ───────────────────────── 3. DASHBOARD ───────────────────────── -->
+<section class="page">
+  <h2>3. Reading the dashboard</h2>
+  <div class="row">
+    <div class="text">
+      <p>Each paired die gets a tile. The layout adapts to the number of active dice — one big tile, two stacked, a 2×2
+         grid, and so on up to 2×4 (or 4×2 in landscape).</p>
+      <h3>Anatomy of a tile</h3>
+      <ul>
+        <li><strong>Type</strong> (top-left) — D4, D6, D8, D10, D00, D12, D20, D6P (pipped) or D6F (fudge), colour-coded per
+            type. <em>D?</em> means the die hasn't reported its type yet.</li>
+        <li><strong>Battery</strong> (top-right, or bottom-right on narrow tiles) — the die's own battery: grey normal,
+            orange ≤25 %, red low, green charging.</li>
+        <li><strong>Value</strong> — the last face rolled. While a die is in motion the previous value is dimmed.</li>
+        <li><strong>State ring</strong> (bottom-left) and tile tint — see the table.</li>
+      </ul>
+      <table>
+        <tr><th>Ring colour</th><th>Die state</th></tr>
+        <tr><td><span class="swatch" style="background:#22c55e"></span>Green</td><td>Rolled — value is final and counted in the results</td></tr>
+        <tr><td><span class="swatch" style="background:#38bdf8"></span>Blue</td><td>Rolling — in the air or tumbling</td></tr>
+        <tr><td><span class="swatch" style="background:#f59e0b"></span>Amber</td><td>Handling — being picked up / held</td></tr>
+        <tr><td><span class="swatch" style="background:#ef4444"></span>Red</td><td>Crooked — landed on an edge; re-roll</td></tr>
+        <tr><td><span class="swatch" style="background:#a78bfa"></span>Violet</td><td>On face — resting, no new roll yet</td></tr>
+        <tr><td><span class="swatch" style="background:#64748b"></span>Grey</td><td>No recent data from the die</td></tr>
+      </table>
+      <p class="small">Tap a tile to open that die's roll history (§5).</p>
+    </div>
+    <figure class="p"><img src="img/05_one_die_rolling.png" alt="Rolling"><figcaption>One die, rolling (previous value dimmed)</figcaption></figure>
+    <figure class="p"><img src="img/06_one_die.png" alt="Rolled"><figcaption>Rolled a 17</figcaption></figure>
+  </div>
+  <div class="grid">
+    <figure class="pxs"><img src="img/07_two_dice.png" alt="Two dice"><figcaption>2 dice</figcaption></figure>
+    <figure class="pxs"><img src="img/08_four_dice.png" alt="Four dice"><figcaption>4 dice</figcaption></figure>
+    <figure class="pxs"><img src="img/09_eight_dice.png" alt="Eight dice"><figcaption>8 dice — the maximum</figcaption></figure>
+  </div>
+</section>
+
+<!-- ───────────────────────── 4. RESULTS PANEL ───────────────────────── -->
+<section class="page">
+  <h2>4. Results panel — sum, highest, lowest</h2>
+  <div class="row">
+    <div class="text">
+      <p>The blue panel at the bottom combines the latest roll from every die into one number. Its label shows the
+         <strong>mode</strong> and how many rolls have been counted this round, e.g. <em>SUM &gt; 4R</em> = sum of 4 rolls.</p>
+      <ul>
+        <li><strong>SUM</strong> — total of all dice rolled this round.</li>
+        <li><strong>HIGHEST</strong> — the single best roll this round.</li>
+        <li><strong>LOWEST</strong> — the single worst roll this round.</li>
+      </ul>
+      <h3>Rounds</h3>
+      <p>A round collects one roll per die. Rolling the same die again replaces its earlier value, so the number
+         always reflects the current state of the table. Tap <kbd>CLR</kbd> to clear the panel and start a new round —
+         it shows “–” until the first die lands. Clearing never touches the per-die history.</p>
+      <h3>Changing mode</h3>
+      <p>Tap the panel (short tap — a 2-second hold powers off) to open <strong>ROLL MODE</strong>. The top group,
+         <em>ROLL RESULTS</em>, switches between SUM, HIGHEST and LOWEST and returns home immediately. The
+         <em>GUIDED ROLLS</em> group below it opens the calculator described in §7. The same page is reachable from
+         ⚙ → <kbd>ROLL MODE</kbd>.</p>
+      <div class="callout">The chosen mode is remembered across power cycles.</div>
+    </div>
+    <figure class="p"><img src="img/10_result_menu.png" alt="Roll mode menu"><figcaption>ROLL MODE menu</figcaption></figure>
+    <figure class="p"><img src="img/12b_partial_round.png" alt="Partial round"><figcaption>Two of four dice rolled: SUM &gt; 2R</figcaption></figure>
+  </div>
+  <div class="grid">
+    <figure class="pxs"><img src="img/11_sum.png" alt="Sum"><figcaption>SUM of 4 rolls = 39</figcaption></figure>
+    <figure class="pxs"><img src="img/06_one_die.png" alt="Highest"><figcaption>HIGHEST with one die</figcaption></figure>
+    <figure class="pxs"><img src="img/12_cleared.png" alt="Cleared"><figcaption>After CLR — waiting for rolls</figcaption></figure>
+  </div>
+</section>
+
+<!-- ───────────────────────── 5. HISTORY & INFO ───────────────────────── -->
+<section class="page">
+  <h2>5. Die history and die info</h2>
+  <div class="row">
+    <div class="text">
+      <h3>Roll history</h3>
+      <p>Tap any tile to see that die's recent rolls, newest first, each with how long ago it landed. The list keeps the
+         last 20 rolls per die while the hub is powered.</p>
+      <ul>
+        <li><kbd>BACK</kbd> returns to the dashboard.</li>
+        <li><kbd>INFO</kbd> opens the die's detail page.</li>
+      </ul>
+      <h3>Die info</h3>
+      <p>Shows the die's unique ID, battery level and charging flag, current state, signal strength and — once the hub
+         has connected to it — firmware details. <em>REFRESHING DETAILS</em> is shown until the connection completes.</p>
+      <div class="callout warn"><strong>UNPAIR DIE</strong> removes the die immediately and saves the change. There is no
+        confirmation — re-add it from <kbd>PAIR DICE</kbd> if you tap it by mistake.</div>
+      <h3>Web history</h3>
+      <p>When Wi-Fi is on, the web UI (§6) shows a combined timeline of the last rolls from every die, updating live.</p>
+    </div>
+    <figure class="p"><img src="img/13_history.png" alt="Roll history"><figcaption>D20 roll history</figcaption></figure>
+    <figure class="p"><img src="img/14_info.png" alt="Die info"><figcaption>Die info</figcaption></figure>
+  </div>
+</section>
+
+<!-- ───────────────────────── 6. SETTINGS ───────────────────────── -->
+<section class="page">
+  <h2>6. Settings</h2>
+  <div class="row">
+    <div class="text">
+      <p>Tap ⚙ in the header. Scroll the list by dragging. <kbd>DONE</kbd> returns home.</p>
+      <table>
+        <tr><th style="width:28mm">Row</th><th>What it does</th></tr>
+        <tr><td>PAIR DICE</td><td>Opens the pairing list (§2).</td></tr>
+        <tr><td>ROLL MODE</td><td>Choose SUM / HIGHEST / LOWEST or a guided roll (§4, §7).</td></tr>
+        <tr><td>WIFI …</td><td>Cycles Wi-Fi: <strong>OFF → AP → CONNECTED → OFF</strong>. The web address is shown
+            beneath the row while Wi-Fi is on. The <em>CONNECTED</em> step is skipped until a home network has been saved.</td></tr>
+        <tr><td>THEME …</td><td>Cycles the colour theme: MIDNIGHT, MOCHA, LATTE, DRACULA, NORD, GRUVBOX, TOKYO.</td></tr>
+        <tr><td>AUTO SLEEP …</td><td>Idle power-off: OFF, 5 MIN, 15 MIN, 30 MIN, 1 HOUR.</td></tr>
+        <tr><td>POWER OFF – 99 %</td><td>Shows the hub battery and powers off after a short countdown.</td></tr>
+        <tr><td>FACTORY RESET</td><td>Asks for confirmation, then erases paired dice, Wi-Fi and all settings and restarts.</td></tr>
+      </table>
+      <h3>Wi-Fi and the web UI</h3>
+      <ol>
+        <li>Tap <kbd>WIFI OFF</kbd> → it becomes <kbd>WIFI AP</kbd>. The hub creates a hotspot named
+            <strong>Pixels-Dice</strong> (password <strong>pixelsdice</strong>).</li>
+        <li>Join it from a phone or laptop and open <strong>http://10.47.1.1</strong>. The web UI mirrors the screen,
+            adds a roll timeline and has its own ⚙ settings page.</li>
+        <li>In the web settings, enter your home network name and password under <em>Join network</em>. The hub connects
+            and the screen row changes to <kbd>WIFI CONNECTED</kbd> with the new address underneath.</li>
+        <li>Tap the row again at any time to turn Wi-Fi off; from AP mode, <em>Forget network</em> in the web UI clears
+            saved credentials.</li>
+      </ol>
+      <div class="callout">Wi-Fi shares the radio with Bluetooth. Leave it <em>OFF</em> at the table for the most responsive
+        dice and longest battery life; turn it on when you want the web view or to change settings from a phone.</div>
+    </div>
+    <figure class="p"><img src="img/16_settings_scrolled.png" alt="Settings scrolled"><figcaption>Settings, scrolled to the end</figcaption></figure>
+    <figure class="p"><img src="img/17_factory_confirm.png" alt="Factory reset confirm"><figcaption>Factory reset confirmation</figcaption></figure>
+  </div>
+  <h3>Themes</h3>
+  <div class="grid">
+    <figure class="pxs"><img src="img/18_theme_mocha.png" alt="Mocha"><figcaption>MOCHA</figcaption></figure>
+    <figure class="pxs"><img src="img/18_theme_latte.png" alt="Latte"><figcaption>LATTE (light)</figcaption></figure>
+    <figure class="pxs"><img src="img/18_theme_dracula.png" alt="Dracula"><figcaption>DRACULA</figcaption></figure>
+    <figure class="pxs"><img src="img/18_theme_nord.png" alt="Nord"><figcaption>NORD</figcaption></figure>
+    <figure class="pxs"><img src="img/18_theme_gruvbox.png" alt="Gruvbox"><figcaption>GRUVBOX</figcaption></figure>
+    <figure class="pxs"><img src="img/18_theme_tokyo.png" alt="Tokyo"><figcaption>TOKYO</figcaption></figure>
+  </div>
+</section>
+
+<!-- ───────────────────────── 7. ADVANCED: GUIDED ROLLS ───────────────────────── -->
+<section class="page">
+  <h2>7. Advanced — guided rolls (calculator)</h2>
+  <div class="row">
+    <div class="text">
+      <p>Guided rolls walk you through a multi-step roll and work out the answer: a D20 check against a difficulty
+         class, advantage/disadvantage, success-counting dice pools, keep-highest/lowest, and damage totals. Open them
+         from the results panel or ⚙ → <kbd>ROLL MODE</kbd>, under <em>GUIDED ROLLS</em>.</p>
+      <h3>How a round works</h3>
+      <ol>
+        <li>Pick a preset and adjust its options with the <kbd>−</kbd>/<kbd>+</kbd> and toggle buttons.
+            Tap the blue preset name to switch to a different preset.</li>
+        <li>Tap <kbd>START ROUND</kbd>. The hub tells you which die to roll and how many rolls remain
+            (e.g. <em>Roll D20 Onyx – 1/2</em> for the first of two rolls). Rolls from other dice are ignored.</li>
+        <li>When the last roll lands the result is shown in green (or red for a failed check).
+            <kbd>ROLL AGAIN</kbd> repeats the same setup; <kbd>BACK</kbd> returns to Settings.</li>
+        <li><kbd>CANCEL</kbd> during a round abandons it without changing the results panel.</li>
+      </ol>
+      <div class="callout">If the required die type isn't paired, the config page shows a red hint such as
+        <em>Need D20 or D4/D6/…</em> and START is refused. <strong>DIE: AUTO</strong> picks the die type you have the
+        most of (largest wins a tie); tap it to lock the pool to a specific type. If you have fewer dice than
+        <em>ROLLS</em>, simply roll the same die again.</div>
+    </div>
+    <figure class="p"><img src="img/20_calc_d20_config.png" alt="D20 check config"><figcaption>D20 CHECK — default options</figcaption></figure>
+    <figure class="p"><img src="img/10b_result_menu_scrolled.png" alt="Preset list"><figcaption>GUIDED ROLLS presets</figcaption></figure>
+  </div>
+  <h3>D20 CHECK</h3>
+  <div class="row">
+    <div class="text">
+      <p>One D20 roll plus a modifier (<em>MOD</em>, −20…+20). Turn <em>TARGET</em> on to compare against a difficulty
+         class (<em>DC</em>); the result then reads <em>17 – SUCCESS DC 10</em> or <em>5 – FAIL DC 10</em>. No D20 paired?
+         The hub combines two or three smaller dice (e.g. a D4 and a D6) into a fair 1–20 roll and tells you which to roll.</p>
+    </div>
+    <figure class="ps"><img src="img/20b_calc_d20_mod_target.png" alt="Mod and DC"><figcaption>MOD +2, target DC 10</figcaption></figure>
+    <figure class="ps"><img src="img/21_calc_d20_waiting.png" alt="Waiting for roll"><figcaption>Waiting for the roll</figcaption></figure>
+    <figure class="ps"><img src="img/22_calc_d20_result.png" alt="Success"><figcaption>Success</figcaption></figure>
+    <figure class="ps"><img src="img/22b_calc_d20_fail.png" alt="Fail"><figcaption>Failure</figcaption></figure>
+  </div>
+</section>
+
+<section class="page">
+    <h3>ADVANTAGE / DISADVANTAGE</h3>
+  <div class="row">
+    <div class="text">
+      <p>Roll the D20 twice; the hub keeps the higher (advantage) or lower (disadvantage) roll and adds <em>MOD</em>.
+         The instruction line counts <em>1/2</em>, <em>2/2</em> so you always know where you are. Use the same die for
+         both rolls, or two D20s — either works.</p>
+    </div>
+    <figure class="ps"><img src="img/24_calc_advantage_config.png" alt="Advantage config"><figcaption>Only MOD to set</figcaption></figure>
+    <figure class="ps"><img src="img/24b_calc_advantage_roll1.png" alt="First roll"><figcaption>First of two rolls</figcaption></figure>
+    <figure class="ps"><img src="img/24d_calc_advantage_result.png" alt="Result"><figcaption>Kept the 19</figcaption></figure>
+  </div>
+
+  <h3>SUCCESS POOL</h3>
+  <div class="row">
+    <div class="text">
+      <p>Roll <em>ROLLS</em> dice and count how many meet or beat <em>TARGET</em>. Ideal for World-of-Darkness-style
+         pools or Shadowrun hits. Rolls land in any order; each roll of the chosen die type advances the count.</p>
+      <h3>KEEP HIGHEST / KEEP LOWEST</h3>
+      <p>Roll <em>ROLLS</em> dice and sum only the best (or worst) <em>KEEP</em> of them — e.g. 4d6 keep 3 for ability
+         scores. The result shows the kept total.</p>
+      <h3>DAMAGE</h3>
+      <p>Sum <em>ROLLS</em> dice of one type and add <em>MOD</em>. Toggle <em>CRIT</em> on to double the dice total before
+         the modifier is added. <em>DIE: AUTO</em> picks the type you have most of.</p>
+    </div>
+    <figure class="ps"><img src="img/25_calc_pool_config.png" alt="Success pool"><figcaption>SUCCESS POOL — 4 dice, target 5+</figcaption></figure>
+    <figure class="ps"><img src="img/26_calc_keep_config.png" alt="Keep highest"><figcaption>KEEP HIGHEST — 4 rolls, keep 1</figcaption></figure>
+    <figure class="ps"><img src="img/27_calc_damage_config.png" alt="Damage"><figcaption>DAMAGE — 2 dice + MOD, CRIT off</figcaption></figure>
+  </div>
+
+  <h3>Quick reference</h3>
+  <table>
+    <tr><th>Action</th><th>Gesture</th></tr>
+    <tr><td>Open settings</td><td>Tap ⚙ (top-right)</td></tr>
+    <tr><td>Change SUM / HIGHEST / LOWEST, start a guided roll</td><td>Tap the results panel</td></tr>
+    <tr><td>New round</td><td>Tap <kbd>CLR</kbd></td></tr>
+    <tr><td>Die history / info</td><td>Tap a tile → <kbd>INFO</kbd></td></tr>
+    <tr><td>Power off</td><td>Hold the results panel 2 s, or ⚙ → <kbd>POWER OFF</kbd></td></tr>
+    <tr><td>Wake</td><td>Press <kbd>BOOT</kbd></td></tr>
+    <tr><td>Scroll a list</td><td>Drag up / down</td></tr>
+  </table>
+</section>
+
+</body>
+</html>

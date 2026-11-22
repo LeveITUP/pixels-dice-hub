@@ -189,7 +189,10 @@ esp_err_t InitLvgl(Hardware *hardware) {
   display_config.vres = kDisplayHeight;
   display_config.rounder_cb = RoundDisplayArea;
   display_config.color_format = LV_COLOR_FORMAT_RGB565;
+  // Draw + rotation buffers live in PSRAM: the S3's GDMA can read PSRAM and
+  // keeping ~67 KB out of internal RAM leaves headroom for Wi-Fi/BLE/LVGL.
   display_config.flags.buff_dma = true;
+  display_config.flags.buff_spiram = true;
   display_config.flags.sw_rotate = true;
   display_config.flags.swap_bytes = true;
   hardware->display = lvgl_port_add_disp(&display_config);

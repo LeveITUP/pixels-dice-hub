@@ -20,6 +20,13 @@ else()
   message(FATAL_ERROR "Unsupported PIXELS_BOARD_PROFILE: ${PIXELS_BOARD_PROFILE}")
 endif()
 
+# Development-only screenshot/touch-injection API (see dev_tools.h).
+option(PIXELS_DEV_TOOLS "Build the port-8080 development API" OFF)
+set(PIXELS_DEV_SOURCES "")
+if(PIXELS_DEV_TOOLS)
+  set(PIXELS_DEV_SOURCES "dev_tools.cpp")
+endif()
+
 idf_component_register(
   SRCS
     "app_main.cpp"
@@ -34,6 +41,7 @@ idf_component_register(
     "theme.cpp"
     "ui.cpp"
     "web_server.cpp"
+    ${PIXELS_DEV_SOURCES}
   INCLUDE_DIRS "."
   REQUIRES
     bt
@@ -50,3 +58,7 @@ idf_component_register(
     nvs_flash
     pixels_protocol
 )
+
+if(PIXELS_DEV_TOOLS)
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE PIXELS_DEV_TOOLS=1)
+endif()

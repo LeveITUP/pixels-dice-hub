@@ -74,6 +74,13 @@ names fail configuration rather than silently building for the wrong pinout.
   shutdown when the cell drops below 3.35 V on battery power. Hub and dice
   indicators share one colour scheme: green charging, amber at 25%, red low.
 
+## User manual
+
+A printable A4 manual for the S3 touchscreen edition, with screenshots of every
+screen, lives in [docs/manual/pixels-dice-hub-manual.pdf](docs/manual/pixels-dice-hub-manual.pdf)
+(source: `docs/manual/manual.html`; render with headless Chromium
+`--print-to-pdf`).
+
 ## Planning artifacts
 
 - [Project plan](docs/project-plan.md)
@@ -122,7 +129,7 @@ colours follow the theme selected on the hub.
 
 The touchscreen settings page (the header cog) starts with `PAIR DICE`, which
 opens a separate page listing discovered and paired dice (`ADD` / `REMOVE`),
-and `RESULT / GAME`, a second way into the result-mode and guided-roll menu.
+and `ROLL MODE`, a second way into the result-mode and guided-roll menu.
 The system rows follow.
 
 The touchscreen firmware defaults Wi-Fi off. Its settings page
@@ -217,6 +224,23 @@ idf.py -B build-s3-amoled \
   build
 idf.py -B build-s3-amoled -p /dev/ttyACM1 flash monitor
 ```
+
+### Developer tools build
+
+Adding `-D PIXELS_DEV_TOOLS=ON` to the configure step (and
+`CONFIG_LV_USE_SNAPSHOT=y` to the sdkconfig defaults) starts a plain HTTP API on
+port 8080 once the hub is on Wi-Fi. It is used to drive the real device for
+manual screenshots and UI testing and must not be enabled in release builds:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /shot` | PNG screenshot of the current LVGL screen |
+| `GET /tap?x=&y=[&ms=]` / `GET /drag?x0=&y0=&x1=&y1=[&ms=]` | Synthetic touch input (`ms` = hold/drag duration) |
+| `GET /die?id=&type=&face=&state=[&bat=&chg=&rssi=&pair=]` | Create or update a fake die (`type` d4…d20, d00, d6p, d6f, unknown) |
+| `GET /unpair?id=` | Unpair a die (RAM only) |
+| `GET /orient?o=` | Force screen orientation 0-3 |
+| `GET /save` | Persist current pairings to NVS |
+| `GET /heap` | Internal/PSRAM heap statistics |
 
 Host-side protocol tests do not require ESP-IDF:
 

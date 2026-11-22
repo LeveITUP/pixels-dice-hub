@@ -61,7 +61,7 @@ Each tile can contain:
 - Closing the history view blinks the die again.
 - Tap the header cog to open settings: a scrollable stack of 34 px button
   rows styled like `DONE`. `PAIR DICE` (first) opens a dedicated pairing page
-  with the discovered/paired dice list and a `BACK` button; `RESULT / GAME`
+  with the discovered/paired dice list and a `BACK` button; `ROLL MODE`
   opens the same result-mode / guided-roll menu as tapping the aggregate.
   Then `WIFI <state>`, `STATUS LIGHT <mode>`, `THEME <name>`,
   `AUTO SLEEP <period>`, `POWER OFF - <battery>` (tapping toggles or cycles)
